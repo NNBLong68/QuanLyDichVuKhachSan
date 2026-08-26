@@ -142,8 +142,3 @@ dotnet run
 - **Data Access**: `Microsoft.Data.SqlClient` 5.2.2 (ADO.NET)
 - **Database**: Microsoft SQL Server (T-SQL, Triggers, Stored Procedures)
 - **UI Design**: Modern Dark Theme (#0F172A), Slate Panels (#1E293B), Emerald Accent (#10B981)
-
----
-
-## 📝 License
-Dự án được phát hành dưới bản quyền [MIT License](LICENSE).
