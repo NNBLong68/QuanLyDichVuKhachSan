@@ -1,107 +1,131 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
+using System;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace QuanLyDichVuKhachSan
 {
     public partial class MainForm : Form
     {
+        private Form activeChildForm = null;
+        private Button activeNavBtn = null;
+
         public MainForm()
         {
             InitializeComponent();
-
-            // Set màu cho từng nút tab
-            SetTabButtonStyle(btnSoDoPhong);
-            SetTabButtonStyle(btnDichVu);
-            SetTabButtonStyle(btnKhachHang);
-            SetTabButtonStyle(btnHoaDon);
-            SetTabButtonStyle(btnThongKe);
-
         }
 
         private void MainForm_Load(object sender, EventArgs e)
         {
-            pnlHeader.BackColor = ColorTranslator.FromHtml("#1B2A4A");
-            LO_pnlTabBar.BackColor = ColorTranslator.FromHtml("#1B2A4A");
-
-            btnDichVu.BackColor = ColorTranslator.FromHtml("#1B2A4A");
-            btnHoaDon.BackColor = ColorTranslator.FromHtml("#1B2A4A");
-            btnKhachHang.BackColor = ColorTranslator.FromHtml("#1B2A4A");
-            btnSoDoPhong.BackColor = ColorTranslator.FromHtml("#1B2A4A");
-            btnThongKe.BackColor = ColorTranslator.FromHtml("#1B2A4A");
-        }
-        private void SetTabButtonStyle(Button btn)
-        {
-            btn.FlatStyle = FlatStyle.Flat;
-            btn.FlatAppearance.BorderSize = 0;
-            btn.FlatAppearance.MouseOverBackColor = ColorTranslator.FromHtml("#283A64");
-            btn.FlatAppearance.MouseDownBackColor = ColorTranslator.FromHtml("#101A31");
-        }
-
-        //Nhúng form vào panel Content
-        private Form currentChildForm;
-        private void OpenChildForm(Form childForm, Button activeBtn)
-        {
-            //currentChildForm là biến lưu form con đang được mở
-            currentChildForm?.Close(); //Đóng form đang mở
-            // Dấu ?. nghĩa là nếu khác null thì gọi close()
-
-            currentChildForm = childForm; //gán form mới vào biến hiện tại
-            childForm.TopLevel = false; //hạ bậc form, không còn có thể nắm kéo đi hay điều chỉnh nữa -> Biến thành form con
-            childForm.FormBorderStyle = FormBorderStyle.None;
-            childForm.Dock = DockStyle.Fill;
-
-            pnlContent.Controls.Add(childForm); //nhúng form con vào panel
-            childForm.BringToFront(); //đưa form con lên trên cùng
-            childForm.Show();
-
-            SetActiveTab(activeBtn);
-            this.ActiveControl = pnlContent; //Dời focus khỏi nút
-        }
-
-        private void SetActiveTab(Button btn)
-        {
-            foreach (Control ctrl in LO_pnlTabBar.Controls)
+            // Set User Badge info
+            if (SessionManager.CurrentUser != null)
             {
-                if (ctrl is Button button)
+                lblUserInfo.Text = "👤 " + SessionManager.CurrentUser.HoTen;
+                lblUserRole.Text = $"{SessionManager.CurrentUser.ChucVu} | {SessionManager.CurrentUser.CaTruc}";
+
+                // Role-based visibility
+                if (!SessionManager.CurrentUser.IsAdmin)
                 {
-                    button.BackColor = ColorTranslator.FromHtml("#1B2A4A");
-                    button.ForeColor = SystemColors.Info;
+                    btnNhapKho.Visible = false;
+                    btnNhanVien.Visible = false;
                 }
             }
 
-            btn.ForeColor = ColorTranslator.FromHtml("#FFC857");
+            // Open Sơ đồ phòng as default home form
+            OpenChildForm(new frmPhong(), btnSoDoPhong, "🚪 SƠ ĐỒ PHÒNG KHÁCH SẠN");
+        }
+
+        public void OpenChildForm(Form childForm, Button navBtn, string pageTitle)
+        {
+            if (activeChildForm != null)
+            {
+                activeChildForm.Close();
+            }
+
+            activeChildForm = childForm;
+            childForm.TopLevel = false;
+            childForm.FormBorderStyle = FormBorderStyle.None;
+            childForm.Dock = DockStyle.Fill;
+
+            pnlContent.Controls.Add(childForm);
+            pnlContent.Tag = childForm;
+            childForm.BringToFront();
+            childForm.Show();
+
+            lblPageTitle.Text = pageTitle;
+            HighlightNavButton(navBtn);
+        }
+
+        private void HighlightNavButton(Button btn)
+        {
+            if (activeNavBtn != null)
+            {
+                activeNavBtn.BackColor = Color.FromArgb(15, 23, 42);
+                activeNavBtn.ForeColor = Color.FromArgb(226, 232, 240);
+            }
+
+            activeNavBtn = btn;
+            if (activeNavBtn != null)
+            {
+                activeNavBtn.BackColor = Color.FromArgb(30, 41, 59);
+                activeNavBtn.ForeColor = Color.FromArgb(52, 211, 153);
+            }
         }
 
         private void btnSoDoPhong_Click(object sender, EventArgs e)
         {
-            OpenChildForm(new frmPhong(), btnSoDoPhong);
+            OpenChildForm(new frmPhong(), btnSoDoPhong, "🚪 SƠ ĐỒ PHÒNG KHÁCH SẠN");
         }
 
         private void btnDichVu_Click(object sender, EventArgs e)
         {
-            OpenChildForm(new frmDichVu(), btnDichVu);
+            OpenChildForm(new frmDichVu(), btnDichVu, "🍽️ DANH MỤC DỊCH VỤ");
+        }
+
+        private void btnPhieuDichVu_Click(object sender, EventArgs e)
+        {
+            OpenChildForm(new frmPhieuDichVu(), btnPhieuDichVu, "📋 LẬP PHIẾU DỊCH VỤ");
         }
 
         private void btnKhachHang_Click(object sender, EventArgs e)
         {
-            OpenChildForm(new frmKhachHang(), btnKhachHang);
+            OpenChildForm(new frmKhachHang(), btnKhachHang, "👥 QUẢN LÝ KHÁCH HÀNG");
+        }
+
+        private void btnDoiTac_Click(object sender, EventArgs e)
+        {
+            OpenChildForm(new frmDoiTac(), btnDoiTac, "🧺 QUẢN LÝ ĐỐI TÁC GIẶT ỦI");
+        }
+
+        private void btnNhapKho_Click(object sender, EventArgs e)
+        {
+            OpenChildForm(new frmNhapKho(), btnNhapKho, "📦 LỊCH SỬ NHẬP KHO THỰC PHẨM");
         }
 
         private void btnHoaDon_Click(object sender, EventArgs e)
         {
-            OpenChildForm(new frmHoaDon(), btnHoaDon);
+            OpenChildForm(new frmHoaDon(), btnHoaDon, "💳 QUẢN LÝ HÓA ĐƠN & THANH TOÁN");
         }
 
         private void btnThongKe_Click(object sender, EventArgs e)
         {
-            OpenChildForm(new frmThongKe(), btnThongKe);
+            OpenChildForm(new frmThongKe(), btnThongKe, "📊 BÁO CÁO THỐNG KÊ DOANH THU");
+        }
+
+        private void btnNhanVien_Click(object sender, EventArgs e)
+        {
+            OpenChildForm(new frmNhanVien(), btnNhanVien, "👤 QUẢN LÝ NHÂN VIÊN");
+        }
+
+        private void btnDangXuat_Click(object sender, EventArgs e)
+        {
+            var res = MessageBox.Show("Bạn có chắc chắn muốn đăng xuất khỏi hệ thống?", "Xác nhận", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (res == DialogResult.Yes)
+            {
+                SessionManager.CurrentUser = null;
+                this.Hide();
+                frmDangNhap login = new frmDangNhap();
+                login.Show();
+            }
         }
     }
 }
