@@ -8,7 +8,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>QuanLyDichVuKhachSan</RootNamespace>
     <AssemblyName>QuanLyDichVuKhachSan</AssemblyName>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
 
   <ItemGroup>
