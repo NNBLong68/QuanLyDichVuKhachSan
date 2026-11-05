@@ -368,17 +368,7 @@
                                             </Grid.RowDefinitions>
 
                                             <!-- Header -->
-                                            <Grid Grid.Row="0" Margin="0,0,0,8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-
-                                                <TextBlock Text="🔔 THÔNG BÁO HỆ THỐNG" FontSize="13" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
-
-                                                <Button Grid.Column="1" Command="{Binding MarkAllNotificationsReadCommand}" 
-                                                        Content="✓ Đã đọc hết" FontSize="10.5" Height="26" Padding="6,0" Style="{StaticResource OutlineButton}"/>
-                                            </Grid>
+                                            <TextBlock Grid.Row="0" Text="🔔 THÔNG BÁO HỆ THỐNG" FontSize="13" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center" Margin="0,0,0,8"/>
 
                                             <Separator Grid.Row="1" Background="#E2E8F0" Margin="0,0,0,10"/>
 

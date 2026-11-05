@@ -80,7 +80,6 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public ICommand SyncDatabaseCommand { get; }
         public ICommand OpenAccountManagementCommand { get; }
         public ICommand ToggleNotificationPopupCommand { get; }
-        public ICommand MarkAllNotificationsReadCommand { get; }
         public ICommand MarkNotificationReadCommand { get; }
         public ICommand OpenNotificationTargetCommand { get; }
 
@@ -112,6 +111,8 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 IsNotificationPopupOpen = !IsNotificationPopupOpen;
                 if (IsNotificationPopupOpen)
                 {
+                    // Mở popup = đã xem: tự động đánh dấu đã đọc và tắt badge đỏ
+                    NotificationService.MarkAllAsRead(IsAdmin);
                     OnPropertyChanged(nameof(FilteredNotifications));
                     OnPropertyChanged(nameof(UnreadNotificationCount));
                     OnPropertyChanged(nameof(HasUnreadNotifications));
@@ -129,16 +130,20 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 }
             });
 
-            MarkAllNotificationsReadCommand = new RelayCommand(_ =>
-            {
-                NotificationService.MarkAllAsRead();
-                OnPropertyChanged(nameof(FilteredNotifications));
-                OnPropertyChanged(nameof(UnreadNotificationCount));
-                OnPropertyChanged(nameof(HasUnreadNotifications));
-            });
-
             NotificationService.Notifications.CollectionChanged += (s, e) =>
             {
+                // Đang mở popup thì thông báo mới cũng coi như đã xem, badge không nhảy số
+                if (IsNotificationPopupOpen && e.NewItems != null)
+                {
+                    foreach (AppNotification notif in e.NewItems)
+                    {
+                        if (IsAdmin || notif.TargetRole != "Admin")
+                        {
+                            notif.IsRead = true;
+                        }
+                    }
+                }
+
                 OnPropertyChanged(nameof(FilteredNotifications));
                 OnPropertyChanged(nameof(UnreadNotificationCount));
                 OnPropertyChanged(nameof(HasUnreadNotifications));

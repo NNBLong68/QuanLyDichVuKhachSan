@@ -340,24 +340,30 @@ namespace QuanLyDichVuKhachSan.Services
             notif.IsRead = true;
         }
 
-        public void MarkAllAsRead()
+        /// <summary>
+        /// Đánh dấu đã đọc các thông báo mà vai trò hiện tại nhìn thấy.
+        /// Admin thấy tất cả; Lễ tân chỉ thấy các thông báo không dành riêng cho Admin.
+        /// </summary>
+        public void MarkAllAsRead(bool isAdmin)
         {
-            if (App.Current?.Dispatcher != null && !App.Current.Dispatcher.CheckAccess())
-            {
-                App.Current.Dispatcher.Invoke(() =>
-                {
-                    foreach (var n in Notifications)
-                    {
-                        n.IsRead = true;
-                    }
-                });
-            }
-            else
+            void Apply()
             {
                 foreach (var n in Notifications)
                 {
-                    n.IsRead = true;
+                    if (isAdmin || n.TargetRole != "Admin")
+                    {
+                        n.IsRead = true;
+                    }
                 }
+            }
+
+            if (App.Current?.Dispatcher != null && !App.Current.Dispatcher.CheckAccess())
+            {
+                App.Current.Dispatcher.Invoke(Apply);
+            }
+            else
+            {
+                Apply();
             }
         }
     }
