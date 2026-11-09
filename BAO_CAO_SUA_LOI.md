@@ -17,6 +17,7 @@
 | Mất kết nối SQL nhưng app vẫn báo khởi tạo thành công, tự thêm tài khoản admin/123 trong RAM | Bắt buộc `TestConnection()` trước khi nạp; lỗi hiển thị cho người dùng; bỏ fallback tài khoản trong code. |
 | Mỗi lần mở app tự “quyết toán” mọi đơn quá khứ, tự đánh dấu đã thanh toán, tự gán đối tác giặt ủi, tự tạo phân công ca | Mặc định tắt; chỉ chạy khi đặt `QLKS_AUTO_SETTLE_DEMO=1` cho dữ liệu demo. |
 | Reload dữ liệu còn giữ cache cũ khi DB rỗng | Đã `Clear()` trước khi nạp ở các danh mục chính. |
+| Mỗi lần đăng nhập thành công, app tự ghi đè `MatKhauHash` sang định dạng khác dù mật khẩu không đổi (khiến tưởng đã đổi mật khẩu) | Bỏ đoạn tự ghi đè trong `AuthService.Login`; hash chỉ được cập nhật khi người dùng thực sự đổi mật khẩu trong chức năng quản lý tài khoản. Đã khôi phục hash seed `admin`/`letan` về giá trị ban đầu. |
 
 ### 1.2. Tính tiền phòng & hóa đơn
 

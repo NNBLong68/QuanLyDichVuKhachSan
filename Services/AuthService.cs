@@ -85,14 +85,9 @@ namespace QuanLyDichVuKhachSan.Services
                     cachedUser.Password = cleanPassword;
                 }
 
-                string properEncryptedHash = SecurityHelper.HashPassword(cleanPassword);
-                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                    "IF OBJECT_ID('TaiKhoan', 'U') IS NOT NULL " +
-                    "UPDATE TaiKhoan SET MatKhauHash = @Hash WHERE Id = @Id OR TenDangNhap = @User",
-                    new Microsoft.Data.SqlClient.SqlParameter("@Hash", properEncryptedHash),
-                    new Microsoft.Data.SqlClient.SqlParameter("@Id", user.Id),
-                    new Microsoft.Data.SqlClient.SqlParameter("@User", user.Username)
-                );
+                // Không ghi đè MatKhauHash tại đây. Hash chỉ được cập nhật khi người dùng
+                // thực sự đổi mật khẩu (chức năng quản lý tài khoản). Việc rehash mỗi lần
+                // đăng nhập làm hash trong CSDL thay đổi ngoài ý muốn dù mật khẩu không đổi.
 
                 NotifyAuthChanged();
                 try
