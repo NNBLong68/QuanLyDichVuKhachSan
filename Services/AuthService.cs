@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -72,21 +72,25 @@ namespace QuanLyDichVuKhachSan.Services
 
             if (isValidPassword)
             {
+                // Giữ mật khẩu gốc (plaintext) trên bộ nhớ ứng dụng để Admin luôn nhìn thấy mật khẩu thật
+                user.Password = cleanPassword;
                 CurrentUser = user;
 
-                // Tự động nâng cấp hash mật khẩu trong CSDL nếu trước đó là plaintext hoặc placeholder
-                string properHash = SecurityHelper.HashPassword(cleanPassword);
-                if (user.Password != properHash)
+                var cachedUser = DataService.Instance.Users.FirstOrDefault(u =>
+                    u.Id == user.Id || string.Equals(u.Username, user.Username, StringComparison.OrdinalIgnoreCase));
+                if (cachedUser != null)
                 {
-                    user.Password = properHash;
-                    _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                        "IF OBJECT_ID('TaiKhoan', 'U') IS NOT NULL " +
-                        "UPDATE TaiKhoan SET MatKhauHash = @Hash WHERE Id = @Id OR TenDangNhap = @User",
-                        new Microsoft.Data.SqlClient.SqlParameter("@Hash", properHash),
-                        new Microsoft.Data.SqlClient.SqlParameter("@Id", user.Id),
-                        new Microsoft.Data.SqlClient.SqlParameter("@User", user.Username)
-                    );
+                    cachedUser.Password = cleanPassword;
                 }
+
+                string properEncryptedHash = SecurityHelper.HashPassword(cleanPassword);
+                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
+                    "IF OBJECT_ID('TaiKhoan', 'U') IS NOT NULL " +
+                    "UPDATE TaiKhoan SET MatKhauHash = @Hash WHERE Id = @Id OR TenDangNhap = @User",
+                    new Microsoft.Data.SqlClient.SqlParameter("@Hash", properEncryptedHash),
+                    new Microsoft.Data.SqlClient.SqlParameter("@Id", user.Id),
+                    new Microsoft.Data.SqlClient.SqlParameter("@User", user.Username)
+                );
 
                 NotifyAuthChanged();
                 try

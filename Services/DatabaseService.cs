@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -1495,6 +1495,7 @@ namespace QuanLyDichVuKhachSan.Services
 
                     string username = SafeGetString(reader, "TenDangNhap", "Username");
                     string passwordHash = SafeGetString(reader, "MatKhauHash", "MatKhau", "Password");
+                    string plainPassword = Helpers.SecurityHelper.DecodePasswordFromDb(passwordHash);
                     string fullName = SafeGetString(reader, "HoTen", "FullName");
                     bool isActive = SafeGetBool(reader, "TrangThai");
 
@@ -1502,7 +1503,7 @@ namespace QuanLyDichVuKhachSan.Services
                     {
                         Id = SafeGetInt(reader, "Id", "NguoiDungID", "TaiKhoanID"),
                         Username = username,
-                        Password = passwordHash,
+                        Password = plainPassword,
                         FullName = string.IsNullOrWhiteSpace(fullName) ? (role == UserRole.Admin ? "Chủ Khách Sạn" : "Lễ tân") : fullName,
                         Role = role,
                         PhoneNumber = SafeGetString(reader, "SoDienThoai", "PhoneNumber", "SDT"),

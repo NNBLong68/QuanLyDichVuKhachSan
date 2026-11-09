@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -118,7 +118,7 @@ END";
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
             string username = TxtUsername.Text.Trim();
-            string password = TxtPassword.Text.Trim();
+            string password = SecurityHelper.DecodePasswordFromDb(TxtPassword.Text.Trim());
             string fullName = TxtFullName.Text.Trim();
             bool isActive = ChkIsActive.IsChecked ?? true;
 
