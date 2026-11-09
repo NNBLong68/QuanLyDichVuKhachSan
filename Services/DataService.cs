@@ -100,9 +100,69 @@ namespace QuanLyDichVuKhachSan.Services
         private readonly Dictionary<int, LaundryPartner> _laundryPartnerCache = new();
         private readonly Dictionary<int, User> _userCache = new();
 
+        private readonly object _initGate = new();
+        private Task<bool>? _initTask;
+
+        /// <summary>
+        /// Đánh dấu dữ liệu đã được nạp xong. Chỉ có giá trị true sau khi InitializeAsync hoàn tất.
+        /// </summary>
+        public bool IsInitialized { get; private set; }
+
+        public string? InitializationError { get; private set; }
+
         public DataService()
         {
-            InitializeAndSeedCache();
+            // Cố ý KHÔNG nạp dữ liệu ở đây.
+            // Việc nạp được thực hiện qua InitializeAsync() trên background thread
+            // để màn hình đăng nhập có thể hiển thị ngay lập tức.
+        }
+
+        /// <summary>
+        /// Nạp toàn bộ dữ liệu từ CSDL đúng một lần, trên background thread.
+        /// Chỉ được gọi khi chưa có View/ViewModel nào bind vào các collection bên dưới.
+        /// </summary>
+        public Task<bool> InitializeAsync()
+        {
+            lock (_initGate)
+            {
+                if (_initTask == null || (_initTask.IsCompleted && !_initTask.GetAwaiter().GetResult()))
+                {
+                    _initTask = Task.Run(() =>
+                    {
+                        try
+                        {
+                            InitializeAndSeedCache();
+                            IsInitialized = true;
+                            return true;
+                        }
+                        catch (Exception ex)
+                        {
+                            InitializationError = ex.Message;
+                            System.Diagnostics.Debug.WriteLine($"[DataService.InitializeAsync] {ex}");
+                            return false;
+                        }
+                    });
+                }
+
+                return _initTask;
+            }
+        }
+
+        /// <summary>
+        /// Cho phép thử nạp lại sau khi lần trước thất bại.
+        /// </summary>
+        public void ResetInitialization()
+        {
+            lock (_initGate)
+            {
+                if (_initTask == null || !_initTask.IsCompleted || _initTask.GetAwaiter().GetResult())
+                {
+                    return;
+                }
+
+                _initTask = null;
+                InitializationError = null;
+            }
         }
 
         /// <summary>

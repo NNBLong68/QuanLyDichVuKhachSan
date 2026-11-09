@@ -28,8 +28,22 @@
             <views:LoginView x:Name="LoginControl"/>
         </Grid>
 
-        <!-- Khi ĐÃ đăng nhập -> Hiện Giao diện làm việc chính theo vai trò -->
-        <Grid Visibility="{Binding IsLoggedIn, Converter={StaticResource BoolToVis}}">
+        <!-- ĐÃ đăng nhập nhưng dữ liệu CSDL chưa nạp xong -> màn hình chờ -->
+        <Grid Visibility="{Binding IsWorkspaceLoading, Converter={StaticResource BoolToVis}}"
+              Background="#F8FAFC" Panel.ZIndex="998">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Text="Đang tải dữ liệu khách sạn..."
+                           FontSize="16" FontWeight="SemiBold" Foreground="#334155"
+                           HorizontalAlignment="Center" Margin="0,0,0,14"/>
+                <ProgressBar IsIndeterminate="True" Width="280" Height="6"/>
+                <TextBlock Text="Vui lòng chờ trong giây lát"
+                           FontSize="12" Foreground="#64748B"
+                           HorizontalAlignment="Center" Margin="0,12,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Khi ĐÃ đăng nhập VÀ dữ liệu đã sẵn sàng -> Hiện Giao diện làm việc chính theo vai trò -->
+        <Grid Visibility="{Binding IsWorkspaceVisible, Converter={StaticResource BoolToVis}}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="64"/>
                 <RowDefinition Height="*"/>
@@ -458,173 +472,21 @@
 
                 <!-- RIGHT MAIN CONTENT (DYNAMIC TABS) -->
                 <Grid Grid.Column="1">
-                    <!-- Tab: Sơ đồ phòng & Quản lý dịch vụ -->
-                    <views:RoomMapView DataContext="{Binding RoomMapVM}">
-                        <views:RoomMapView.Style>
-                            <Style TargetType="views:RoomMapView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="RoomMap">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:RoomMapView.Style>
-                    </views:RoomMapView>
+                    <!-- View của tab được tạo muộn (lazy) bởi MainWindow.ShowTab() -->
+                    <ContentControl x:Name="TabContentHost"
+                                    HorizontalContentAlignment="Stretch"
+                                    VerticalContentAlignment="Stretch"/>
 
-                    <!-- Tab: Báo cáo thống kê (Admin only) -->
-                    <views:StatisticsView DataContext="{Binding StatisticsVM}">
-                        <views:StatisticsView.Style>
-                            <Style TargetType="views:StatisticsView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="Statistics">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:StatisticsView.Style>
-                    </views:StatisticsView>
 
-                    <!-- Tab: Quản lý nhân sự lễ tân (Admin only) -->
-                    <views:StaffManagementView DataContext="{Binding StaffVM}">
-                        <views:StaffManagementView.Style>
-                            <Style TargetType="views:StaffManagementView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="Staff">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:StaffManagementView.Style>
-                    </views:StaffManagementView>
 
-                    <!-- Tab: Danh sách khách hàng (Admin only) -->
-                    <views:CustomerListView DataContext="{Binding CustomerVM}">
-                        <views:CustomerListView.Style>
-                            <Style TargetType="views:CustomerListView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="Customers">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:CustomerListView.Style>
-                    </views:CustomerListView>
 
-                    <!-- Tab: Kho hàng món khô (Admin only) -->
-                    <views:InventoryManagementView DataContext="{Binding InventoryVM}">
-                        <views:InventoryManagementView.Style>
-                            <Style TargetType="views:InventoryManagementView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="Inventory">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:InventoryManagementView.Style>
-                    </views:InventoryManagementView>
 
-                    <!-- Tab: Cấu hình dịch vụ (Admin only) -->
-                    <views:ServicesConfigView DataContext="{Binding ServicesConfigVM}">
-                        <views:ServicesConfigView.Style>
-                            <Style TargetType="views:ServicesConfigView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="ServicesConfig">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:ServicesConfigView.Style>
-                    </views:ServicesConfigView>
 
-                    <!-- Tab: Ẩm thực & Mini-bar -->
-                    <views:FoodServiceView DataContext="{Binding FoodVM}">
-                        <views:FoodServiceView.Style>
-                            <Style TargetType="views:FoodServiceView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="Food">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:FoodServiceView.Style>
-                    </views:FoodServiceView>
 
-                    <!-- Tab: Sự kiện & Hội nghị -->
-                    <views:EventServiceView DataContext="{Binding EventVM}">
-                        <views:EventServiceView.Style>
-                            <Style TargetType="views:EventServiceView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="Event">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:EventServiceView.Style>
-                    </views:EventServiceView>
 
-                    <!-- Tab: Cho thuê xe máy -->
-                    <views:VehicleServiceView DataContext="{Binding VehicleVM}">
-                        <views:VehicleServiceView.Style>
-                            <Style TargetType="views:VehicleServiceView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="Vehicle">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:VehicleServiceView.Style>
-                    </views:VehicleServiceView>
 
-                    <!-- Tab: Bãi đỗ xe -->
-                    <views:ParkingServiceView DataContext="{Binding ParkingVM}">
-                        <views:ParkingServiceView.Style>
-                            <Style TargetType="views:ParkingServiceView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="Parking">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:ParkingServiceView.Style>
-                    </views:ParkingServiceView>
 
-                    <!-- Tab: Giặt ủi -->
-                    <views:LaundryServiceView DataContext="{Binding LaundryVM}">
-                        <views:LaundryServiceView.Style>
-                            <Style TargetType="views:LaundryServiceView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="Laundry">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:LaundryServiceView.Style>
-                    </views:LaundryServiceView>
 
-                    <!-- Tab: Lịch sử giao dịch -->
-                    <views:TransactionHistoryView DataContext="{Binding TransactionsVM}">
-                        <views:TransactionHistoryView.Style>
-                            <Style TargetType="views:TransactionHistoryView">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding DataContext.CurrentTab, RelativeSource={RelativeSource AncestorType=Window}}" Value="Transactions">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </views:TransactionHistoryView.Style>
-                    </views:TransactionHistoryView>
                 </Grid>
             </Grid>
         </Grid>

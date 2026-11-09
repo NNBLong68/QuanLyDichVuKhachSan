@@ -48,8 +48,10 @@ namespace QuanLyDichVuKhachSan.Services
             var user = dbUsers.FirstOrDefault(u => 
                 string.Equals(u.Username, cleanUsername, StringComparison.OrdinalIgnoreCase));
 
-            // 2. Nếu không tìm thấy trong DB, kiểm tra trong DataService cache
-            if (user == null)
+            // 2. Nếu không tìm thấy trong DB, kiểm tra trong DataService cache.
+            //    CHỈ đọc cache khi dữ liệu đã nạp xong — tránh duyệt collection
+            //    trong lúc DataService đang nạp nền trên thread khác.
+            if (user == null && DataService.Instance.IsInitialized)
             {
                 user = DataService.Instance.Users.FirstOrDefault(u => 
                     string.Equals(u.Username, cleanUsername, StringComparison.OrdinalIgnoreCase));
@@ -91,8 +93,9 @@ namespace QuanLyDichVuKhachSan.Services
                 NotifyAuthChanged();
                 try
                 {
+                    // Chỉ ghi nhận thông báo đăng nhập. Việc quét cảnh báo vận hành
+                    // được thực hiện sau khi dữ liệu CSDL nạp xong (MainViewModel.InitializeWorkspace).
                     NotificationService.Instance.NotifyLogin(user.Username, user.RoleDisplayName, user.FullName);
-                    NotificationService.Instance.ScanOperationalAlerts();
                 }
                 catch { }
                 return true;

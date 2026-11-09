@@ -17,16 +17,39 @@ namespace QuanLyDichVuKhachSan.Services
         private readonly DispatcherTimer _scanTimer;
         private int _nextId = 1;
         private readonly HashSet<string> _notifiedKeys = new(StringComparer.OrdinalIgnoreCase);
+        private bool _monitoring;
 
         private NotificationService()
         {
-            // Quét kiểm tra cảnh báo vận hành tự động mỗi 30 giây
+            // Chỉ khởi tạo timer, KHÔNG chạy ngay.
+            // Timer được bật sau khi dữ liệu CSDL đã nạp xong (StartMonitoring)
+            // để tránh quét collection khi DataService còn đang nạp nền.
             _scanTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromSeconds(30)
             };
             _scanTimer.Tick += (s, e) => ScanOperationalAlerts();
+        }
+
+        /// <summary>
+        /// Bật quét cảnh báo vận hành định kỳ. An toàn khi gọi nhiều lần.
+        /// </summary>
+        public void StartMonitoring()
+        {
+            if (_monitoring) return;
+            _monitoring = true;
+            ScanOperationalAlerts();
             _scanTimer.Start();
+        }
+
+        /// <summary>
+        /// Tạm dừng quét cảnh báo (dùng khi đăng xuất).
+        /// </summary>
+        public void StopMonitoring()
+        {
+            if (!_monitoring) return;
+            _monitoring = false;
+            _scanTimer.Stop();
         }
 
         public void AddNotification(

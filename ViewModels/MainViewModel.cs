@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
@@ -13,19 +15,45 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public AuthService Auth => AuthService.Instance;
         public DataService Data => DataService.Instance;
 
-        // ViewModels con
-        public RoomMapViewModel RoomMapVM { get; }
-        public FoodViewModel FoodVM { get; }
-        public EventViewModel EventVM { get; }
-        public VehicleViewModel VehicleVM { get; }
-        public ParkingViewModel ParkingVM { get; }
-        public LaundryViewModel LaundryVM { get; }
-        public StaffViewModel StaffVM { get; }
-        public StatisticsViewModel StatisticsVM { get; }
-        public CustomerViewModel CustomerVM { get; }
-        public InventoryViewModel InventoryVM { get; }
-        public ServicesConfigViewModel ServicesConfigVM { get; }
-        public TransactionHistoryViewModel TransactionsVM { get; }
+        // ------------------------------------------------------------------
+        // ViewModels con: khởi tạo muộn (lazy) — chỉ tạo khi tab được mở lần đầu.
+        // Không dùng getter trong constructor hoặc trong các đoạn code chạy lúc khởi động.
+        // ------------------------------------------------------------------
+        private RoomMapViewModel? _roomMapVM;
+        public RoomMapViewModel RoomMapVM => _roomMapVM ??= new RoomMapViewModel();
+
+        private FoodViewModel? _foodVM;
+        public FoodViewModel FoodVM => _foodVM ??= new FoodViewModel();
+
+        private EventViewModel? _eventVM;
+        public EventViewModel EventVM => _eventVM ??= new EventViewModel();
+
+        private VehicleViewModel? _vehicleVM;
+        public VehicleViewModel VehicleVM => _vehicleVM ??= new VehicleViewModel();
+
+        private ParkingViewModel? _parkingVM;
+        public ParkingViewModel ParkingVM => _parkingVM ??= new ParkingViewModel();
+
+        private LaundryViewModel? _laundryVM;
+        public LaundryViewModel LaundryVM => _laundryVM ??= new LaundryViewModel();
+
+        private StaffViewModel? _staffVM;
+        public StaffViewModel StaffVM => _staffVM ??= new StaffViewModel();
+
+        private StatisticsViewModel? _statisticsVM;
+        public StatisticsViewModel StatisticsVM => _statisticsVM ??= new StatisticsViewModel();
+
+        private CustomerViewModel? _customerVM;
+        public CustomerViewModel CustomerVM => _customerVM ??= new CustomerViewModel();
+
+        private InventoryViewModel? _inventoryVM;
+        public InventoryViewModel InventoryVM => _inventoryVM ??= new InventoryViewModel();
+
+        private ServicesConfigViewModel? _servicesConfigVM;
+        public ServicesConfigViewModel ServicesConfigVM => _servicesConfigVM ??= new ServicesConfigViewModel();
+
+        private TransactionHistoryViewModel? _transactionsVM;
+        public TransactionHistoryViewModel TransactionsVM => _transactionsVM ??= new TransactionHistoryViewModel();
 
         private string _currentTab = "RoomMap";
         public string CurrentTab
@@ -43,12 +71,33 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public string RoleBadgeBackground => Auth.IsAdmin ? "#D97706" : "#0D9488";
         public string AdminBadgeTooltip => Auth.IsAdmin ? "Click chuột phải để Quản lý tài khoản (Đổi user/pass, bật/tắt)" : "Tài khoản Lễ Tân";
 
+        // ------------------------------------------------------------------
+        // Trạng thái workspace: chỉ hiện giao diện làm việc sau khi dữ liệu sẵn sàng.
+        // ------------------------------------------------------------------
+        private bool _isDataReady;
+        public bool IsDataReady
+        {
+            get => _isDataReady;
+            private set
+            {
+                if (SetProperty(ref _isDataReady, value))
+                {
+                    OnPropertyChanged(nameof(IsWorkspaceVisible));
+                    OnPropertyChanged(nameof(IsWorkspaceLoading));
+                }
+            }
+        }
+
+        public bool IsWorkspaceVisible => IsLoggedIn && IsDataReady;
+        public bool IsWorkspaceLoading => IsLoggedIn && !IsDataReady;
+
         // Tự động ẩn/hiển thị tab dịch vụ khi Bật/Tắt Active trong Cấu hình dịch vụ (Áp dụng cả Admin và Lễ tân)
-        public bool IsFoodServiceVisible => Data.ServicesConfig.FirstOrDefault(x => x.Code == "AN_UONG")?.IsActive ?? true;
-        public bool IsEventServiceVisible => Data.ServicesConfig.FirstOrDefault(x => x.Code == "SU_KIEN")?.IsActive ?? true;
-        public bool IsVehicleServiceVisible => Data.ServicesConfig.FirstOrDefault(x => x.Code == "THUE_XE")?.IsActive ?? true;
-        public bool IsParkingServiceVisible => Data.ServicesConfig.FirstOrDefault(x => x.Code == "DO_XE")?.IsActive ?? true;
-        public bool IsLaundryServiceVisible => Data.ServicesConfig.FirstOrDefault(x => x.Code == "GIAT_UI")?.IsActive ?? true;
+        // Khi dữ liệu chưa nạp xong, trả về true để tránh đọc collection đang được ghi ở thread nền.
+        public bool IsFoodServiceVisible => !Data.IsInitialized || (Data.ServicesConfig.FirstOrDefault(x => x.Code == "AN_UONG")?.IsActive ?? true);
+        public bool IsEventServiceVisible => !Data.IsInitialized || (Data.ServicesConfig.FirstOrDefault(x => x.Code == "SU_KIEN")?.IsActive ?? true);
+        public bool IsVehicleServiceVisible => !Data.IsInitialized || (Data.ServicesConfig.FirstOrDefault(x => x.Code == "THUE_XE")?.IsActive ?? true);
+        public bool IsParkingServiceVisible => !Data.IsInitialized || (Data.ServicesConfig.FirstOrDefault(x => x.Code == "DO_XE")?.IsActive ?? true);
+        public bool IsLaundryServiceVisible => !Data.IsInitialized || (Data.ServicesConfig.FirstOrDefault(x => x.Code == "GIAT_UI")?.IsActive ?? true);
 
         // Notifications
         public NotificationService NotificationService => NotificationService.Instance;
@@ -85,20 +134,13 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
         public event Action? RequestLogout;
 
+        private bool _workspaceInitialized;
+
         public MainViewModel()
         {
-            RoomMapVM = new RoomMapViewModel();
-            FoodVM = new FoodViewModel();
-            EventVM = new EventViewModel();
-            VehicleVM = new VehicleViewModel();
-            ParkingVM = new ParkingViewModel();
-            LaundryVM = new LaundryViewModel();
-            StaffVM = new StaffViewModel();
-            StatisticsVM = new StatisticsViewModel();
-            CustomerVM = new CustomerViewModel();
-            InventoryVM = new InventoryViewModel();
-            ServicesConfigVM = new ServicesConfigViewModel();
-            TransactionsVM = new TransactionHistoryViewModel();
+            // Constructor này phải THẬT NHẸ.
+            // Tuyệt đối không tạo ViewModel con, không đụng tới DataService.InitializeAsync,
+            // không đăng ký timer ở đây — vì MainWindow tạo MainViewModel trước khi login hiển thị.
 
             SelectTabCommand = new RelayCommand(SelectTab);
             LogoutCommand = new RelayCommand(Logout);
@@ -130,28 +172,59 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 }
             });
 
-            NotificationService.Notifications.CollectionChanged += (s, e) =>
+            Auth.AuthStateChanged += OnAuthStateChanged;
+        }
+
+        /// <summary>
+        /// Gọi MỘT LẦN sau khi DataService.InitializeAsync() hoàn tất và trước khi hiện workspace.
+        /// Đăng ký các sự kiện cần dữ liệu thật, bật timer cảnh báo và đánh dấu dữ liệu sẵn sàng.
+        /// </summary>
+        public void InitializeWorkspace()
+        {
+            if (_workspaceInitialized) return;
+            _workspaceInitialized = true;
+
+            NotificationService.Notifications.CollectionChanged += OnNotificationsChanged;
+            Data.ServicesConfig.CollectionChanged += OnServicesConfigChanged;
+            HotelServiceConfig.OnActiveChanged += OnServiceConfigActiveChanged;
+
+            RefreshServiceVisibilities();
+            NotificationService.StartMonitoring();
+
+            IsDataReady = true;
+
+            OnPropertyChanged(nameof(FilteredNotifications));
+            OnPropertyChanged(nameof(UnreadNotificationCount));
+            OnPropertyChanged(nameof(HasUnreadNotifications));
+        }
+
+        private void OnNotificationsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            // Đang mở popup thì thông báo mới cũng coi như đã xem, badge không nhảy số
+            if (IsNotificationPopupOpen && e.NewItems != null)
             {
-                // Đang mở popup thì thông báo mới cũng coi như đã xem, badge không nhảy số
-                if (IsNotificationPopupOpen && e.NewItems != null)
+                foreach (AppNotification notif in e.NewItems)
                 {
-                    foreach (AppNotification notif in e.NewItems)
+                    if (IsAdmin || notif.TargetRole != "Admin")
                     {
-                        if (IsAdmin || notif.TargetRole != "Admin")
-                        {
-                            notif.IsRead = true;
-                        }
+                        notif.IsRead = true;
                     }
                 }
+            }
 
-                OnPropertyChanged(nameof(FilteredNotifications));
-                OnPropertyChanged(nameof(UnreadNotificationCount));
-                OnPropertyChanged(nameof(HasUnreadNotifications));
-            };
+            OnPropertyChanged(nameof(FilteredNotifications));
+            OnPropertyChanged(nameof(UnreadNotificationCount));
+            OnPropertyChanged(nameof(HasUnreadNotifications));
+        }
 
-            Auth.AuthStateChanged += OnAuthStateChanged;
-            HotelServiceConfig.OnActiveChanged += _ => RefreshServiceVisibilities();
-            Data.ServicesConfig.CollectionChanged += (s, e) => RefreshServiceVisibilities();
+        private void OnServicesConfigChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            RefreshServiceVisibilities();
+        }
+
+        private void OnServiceConfigActiveChanged(HotelServiceConfig config)
+        {
+            RefreshServiceVisibilities();
         }
 
         public void OpenAccountManagement(object? parameter = null)
@@ -229,16 +302,23 @@ namespace QuanLyDichVuKhachSan.ViewModels
             try
             {
                 await Data.SyncDataToDatabaseAsync();
-                RoomMapVM.ApplyFilter();
-                RoomMapVM.LoadServicesForSelectedRoom();
-                RoomMapVM.NotifyAllStateChanges();
-                FoodVM.ApplyFoodFilter();
-                EventVM.BuildHourlySchedule();
-                VehicleVM.ApplyVehicleFilter();
-                CustomerVM.ApplyFilter();
-                InventoryVM.RefreshAll();
-                StatisticsVM.RefreshStatistics();
-                TransactionsVM.Refresh();
+
+                // Chỉ refresh những tab đã được mở. Dùng backing field để không
+                // vô tình khởi tạo ViewModel của các tab chưa ai mở.
+                if (_roomMapVM != null)
+                {
+                    _roomMapVM.ApplyFilter();
+                    _roomMapVM.LoadServicesForSelectedRoom();
+                    _roomMapVM.NotifyAllStateChanges();
+                }
+                if (_foodVM != null) _foodVM.ApplyFoodFilter();
+                if (_eventVM != null) _eventVM.BuildHourlySchedule();
+                if (_vehicleVM != null) _vehicleVM.ApplyVehicleFilter();
+                if (_customerVM != null) _customerVM.ApplyFilter();
+                if (_inventoryVM != null) _inventoryVM.RefreshAll();
+                if (_statisticsVM != null) _statisticsVM.RefreshStatistics();
+                if (_transactionsVM != null) _transactionsVM.Refresh();
+
                 RefreshServiceVisibilities();
             }
             finally
@@ -261,9 +341,18 @@ namespace QuanLyDichVuKhachSan.ViewModels
             OnPropertyChanged(nameof(CurrentUserRoleDisplay));
             OnPropertyChanged(nameof(RoleBadgeBackground));
             OnPropertyChanged(nameof(AdminBadgeTooltip));
+            OnPropertyChanged(nameof(IsWorkspaceVisible));
+            OnPropertyChanged(nameof(IsWorkspaceLoading));
+
             RefreshServiceVisibilities();
             SetDefaultTab();
-            StatisticsVM.RefreshStatistics();
+
+            // Dùng backing field: nếu dùng getter StatisticsVM sẽ tạo VM thống kê
+            // ngay lúc đăng nhập, làm mất tác dụng của lazy tab.
+            if (_statisticsVM != null)
+            {
+                _statisticsVM.RefreshStatistics();
+            }
         }
 
         private void SetDefaultTab()
