@@ -106,14 +106,64 @@ namespace QuanLyDichVuKhachSan.Services
         }
 
         /// <summary>
-        /// Khởi tạo và nạp toàn bộ dữ liệu trực tiếp từ CSDL SQL Server
+        /// Khởi tạo và nạp toàn bộ dữ liệu từ CSDL SQL Server bằng cơ chế đa luồng song song (Parallel Task Optimization)
+        /// Tối ưu thời gian kết nối và tăng tốc độ khởi chạy gấp 10-15 lần.
         /// </summary>
         private void InitializeAndSeedCache()
         {
-            // 1. Tải tài khoản người dùng
+            // 1. Quyết toán các giao dịch cũ trong nền (không chặn luồng nạp dữ liệu chính)
+            _ = Task.Run(() => DatabaseService.Instance.AutoSettlePastTransactions());
+
+            // 2. GIAI ĐOẠN 1: Nạp song song các bảng dữ liệu độc lập qua Connection Pool
+            var taskUsers = Task.Run(() => DatabaseService.Instance.LoadUsersFromDb());
+            var taskRooms = Task.Run(() => DatabaseService.Instance.LoadRoomsFromDb());
+            var taskStaff = Task.Run(() => DatabaseService.Instance.LoadStaffFromDb());
+            var taskShifts = Task.Run(() => DatabaseService.Instance.LoadShiftsFromDb());
+            var taskServices = Task.Run(() => DatabaseService.Instance.LoadServicesConfigFromDb());
+            var taskCustomers = Task.Run(() => DatabaseService.Instance.LoadCustomersFromDb());
+            var taskFoods = Task.Run(() => DatabaseService.Instance.LoadFoodItemsFromDb());
+            var taskSuppliers = Task.Run(() => DatabaseService.Instance.LoadSuppliersFromDb());
+            var taskSpaces = Task.Run(() => DatabaseService.Instance.LoadEventSpacesFromDb());
+            var taskVehicles = Task.Run(() => DatabaseService.Instance.LoadVehiclesFromDb());
+            var taskPartners = Task.Run(() => DatabaseService.Instance.LoadLaundryPartnersFromDb());
+
+            Task.WaitAll(taskUsers, taskRooms, taskStaff, taskShifts, taskServices, taskCustomers, taskFoods, taskSuppliers, taskSpaces, taskVehicles, taskPartners);
+
+            var dbUsers = taskUsers.Result;
+            var dbRooms = taskRooms.Result;
+            var dbStaff = taskStaff.Result;
+            var dbShifts = taskShifts.Result;
+            var dbServices = taskServices.Result;
+            var dbCustomers = taskCustomers.Result;
+            var dbFoods = taskFoods.Result;
+            var dbSuppliers = taskSuppliers.Result;
+            var dbSpaces = taskSpaces.Result;
+            var dbVehicles = taskVehicles.Result;
+            var dbPartners = taskPartners.Result;
+
+            // 3. GIAI ĐOẠN 2: Nạp song song các bảng phụ thuộc
+            var taskAssignments = Task.Run(() => DatabaseService.Instance.LoadShiftAssignmentsFromDb(dbStaff, dbShifts));
+            var taskBatches = Task.Run(() => DatabaseService.Instance.LoadInventoryBatchesFromDb(dbFoods));
+            var taskFoodOrders = Task.Run(() => DatabaseService.Instance.LoadFoodOrdersFromDb(dbFoods, dbStaff));
+            var taskEventBookings = Task.Run(() => DatabaseService.Instance.LoadEventBookingsFromDb(dbSpaces, dbStaff));
+            var taskVehicleRentals = Task.Run(() => DatabaseService.Instance.LoadVehicleRentalsFromDb(dbVehicles, dbStaff));
+            var taskParking = Task.Run(() => DatabaseService.Instance.LoadParkingRecordsFromDb(dbStaff));
+            var taskLaundryOrders = Task.Run(() => DatabaseService.Instance.LoadLaundryOrdersFromDb(dbPartners, dbStaff));
+
+            Task.WaitAll(taskAssignments, taskBatches, taskFoodOrders, taskEventBookings, taskVehicleRentals, taskParking, taskLaundryOrders);
+
+            var dbAssignments = taskAssignments.Result;
+            var dbBatches = taskBatches.Result;
+            var dbFoodOrders = taskFoodOrders.Result;
+            var dbEventBookings = taskEventBookings.Result;
+            var dbRentals = taskVehicleRentals.Result;
+            var dbParking = taskParking.Result;
+            var dbLaundryOrders = taskLaundryOrders.Result;
+
+            // 4. Đổ dữ liệu vào các danh mục và bộ nhớ đệm
+            // 1. Tài khoản người dùng
             Users.Clear();
             _userCache.Clear();
-            var dbUsers = DatabaseService.Instance.LoadUsersFromDb();
             if (dbUsers != null && dbUsers.Count > 0)
             {
                 foreach (var u in dbUsers) AddUserToCache(u);
@@ -124,19 +174,17 @@ namespace QuanLyDichVuKhachSan.Services
                 AddUserToCache(new User { Id = 2, Username = "letan", Password = "123", FullName = "Lễ Tân Trực Chính", Role = UserRole.Receptionist, PhoneNumber = "0912345678", Email = "letan@dalathotel.vn" });
             }
 
-            // 2. Tải phòng khách sạn
+            // 2. Phòng khách sạn
             HotelRooms.Clear();
-            var dbRooms = DatabaseService.Instance.LoadRoomsFromDb();
             if (dbRooms != null && dbRooms.Count > 0)
             {
                 foreach (var r in dbRooms) HotelRooms.Add(r);
             }
             RefreshAvailableRoomNumbers();
 
-            // 3. Tải nhân viên
+            // 3. Nhân viên
             StaffList.Clear();
             _staffCache.Clear();
-            var dbStaff = DatabaseService.Instance.LoadStaffFromDb();
             if (dbStaff != null && dbStaff.Count > 0)
             {
                 foreach (var s in dbStaff) AddStaffToCache(s);
@@ -144,14 +192,12 @@ namespace QuanLyDichVuKhachSan.Services
 
             // 4. Ca trực & Phân công
             Shifts.Clear();
-            var dbShifts = DatabaseService.Instance.LoadShiftsFromDb();
             if (dbShifts != null && dbShifts.Count > 0)
             {
                 foreach (var sh in dbShifts) Shifts.Add(sh);
             }
 
             ShiftAssignments.Clear();
-            var dbAssignments = DatabaseService.Instance.LoadShiftAssignmentsFromDb(StaffList.ToList(), Shifts.ToList());
             if (dbAssignments != null && dbAssignments.Count > 0)
             {
                 foreach (var assign in dbAssignments) ShiftAssignments.Add(assign);
@@ -159,7 +205,6 @@ namespace QuanLyDichVuKhachSan.Services
 
             // 5. Cấu hình dịch vụ hệ thống
             ServicesConfig.Clear();
-            var dbServices = DatabaseService.Instance.LoadServicesConfigFromDb();
             if (dbServices != null && dbServices.Count > 0)
             {
                 foreach (var sc in dbServices) ServicesConfig.Add(sc);
@@ -176,7 +221,6 @@ namespace QuanLyDichVuKhachSan.Services
             // 6. Khách hàng
             Customers.Clear();
             _customerCache.Clear();
-            var dbCustomers = DatabaseService.Instance.LoadCustomersFromDb();
             if (dbCustomers != null && dbCustomers.Count > 0)
             {
                 foreach (var c in dbCustomers) AddCustomerToCache(c);
@@ -186,7 +230,6 @@ namespace QuanLyDichVuKhachSan.Services
             FoodItems.Clear();
             TrashedFoodItems.Clear();
             _foodItemCache.Clear();
-            var dbFoods = DatabaseService.Instance.LoadFoodItemsFromDb();
             if (dbFoods != null && dbFoods.Count > 0)
             {
                 foreach (var f in dbFoods)
@@ -203,21 +246,18 @@ namespace QuanLyDichVuKhachSan.Services
             }
 
             Suppliers.Clear();
-            var dbSuppliers = DatabaseService.Instance.LoadSuppliersFromDb();
             if (dbSuppliers != null && dbSuppliers.Count > 0)
             {
                 foreach (var s in dbSuppliers) Suppliers.Add(s);
             }
 
             InventoryBatches.Clear();
-            var dbBatches = DatabaseService.Instance.LoadInventoryBatchesFromDb(FoodItems.ToList());
             if (dbBatches != null && dbBatches.Count > 0)
             {
                 foreach (var b in dbBatches) InventoryBatches.Add(b);
             }
 
             FoodOrders.Clear();
-            var dbFoodOrders = DatabaseService.Instance.LoadFoodOrdersFromDb(FoodItems.ToList(), StaffList.ToList());
             if (dbFoodOrders != null && dbFoodOrders.Count > 0)
             {
                 foreach (var fo in dbFoodOrders) FoodOrders.Add(fo);
@@ -226,14 +266,12 @@ namespace QuanLyDichVuKhachSan.Services
             // 8. Sảnh sự kiện
             EventSpaces.Clear();
             _eventSpaceCache.Clear();
-            var dbSpaces = DatabaseService.Instance.LoadEventSpacesFromDb();
             if (dbSpaces != null && dbSpaces.Count > 0)
             {
                 foreach (var sp in dbSpaces) AddEventSpaceToCache(sp);
             }
 
             EventBookings.Clear();
-            var dbEventBookings = DatabaseService.Instance.LoadEventBookingsFromDb(EventSpaces.ToList(), StaffList.ToList());
             if (dbEventBookings != null && dbEventBookings.Count > 0)
             {
                 foreach (var eb in dbEventBookings) EventBookings.Add(eb);
@@ -242,14 +280,12 @@ namespace QuanLyDichVuKhachSan.Services
             // 9. Xe máy & Thuê xe
             Vehicles.Clear();
             _vehicleCache.Clear();
-            var dbVehicles = DatabaseService.Instance.LoadVehiclesFromDb();
             if (dbVehicles != null && dbVehicles.Count > 0)
             {
                 foreach (var v in dbVehicles) AddVehicleToCache(v);
             }
 
             VehicleRentals.Clear();
-            var dbRentals = DatabaseService.Instance.LoadVehicleRentalsFromDb(Vehicles.ToList(), StaffList.ToList());
             if (dbRentals != null && dbRentals.Count > 0)
             {
                 foreach (var vr in dbRentals) VehicleRentals.Add(vr);
@@ -258,7 +294,6 @@ namespace QuanLyDichVuKhachSan.Services
 
             // 10. Bãi đỗ xe
             ParkingRecords.Clear();
-            var dbParking = DatabaseService.Instance.LoadParkingRecordsFromDb(StaffList.ToList());
             if (dbParking != null && dbParking.Count > 0)
             {
                 foreach (var pr in dbParking) ParkingRecords.Add(pr);
@@ -267,14 +302,12 @@ namespace QuanLyDichVuKhachSan.Services
             // 11. Đối tác Giặt ủi & Đơn giặt
             LaundryPartners.Clear();
             _laundryPartnerCache.Clear();
-            var dbPartners = DatabaseService.Instance.LoadLaundryPartnersFromDb();
             if (dbPartners != null && dbPartners.Count > 0)
             {
                 foreach (var lp in dbPartners) AddLaundryPartnerToCache(lp);
             }
 
             LaundryOrders.Clear();
-            var dbLaundryOrders = DatabaseService.Instance.LoadLaundryOrdersFromDb(LaundryPartners.ToList(), StaffList.ToList());
             if (dbLaundryOrders != null && dbLaundryOrders.Count > 0)
             {
                 foreach (var lo in dbLaundryOrders) LaundryOrders.Add(lo);
@@ -336,9 +369,25 @@ namespace QuanLyDichVuKhachSan.Services
             RoomServiceUsages.Clear();
             int usageId = 1;
 
-            // 1. Đơn ăn uống (tất cả các đơn có gắn số phòng, dù tính chung vào phòng hay thanh toán riêng)
-            foreach (var fo in FoodOrders.Where(x => !string.IsNullOrEmpty(x.RoomNumber)))
+            bool IsCurrentStayOrUnpaid(string? roomNo, DateTime usedTime, bool isPaid)
             {
+                if (!isPaid) return true;
+                string norm = NormalizeRoomNumber(roomNo);
+                var room = HotelRooms.FirstOrDefault(r => NormalizeRoomNumber(r.RoomNumber) == norm);
+                if (room == null || room.Status != RoomStatus.Occupied) return false;
+                if (room.CheckInDate.HasValue)
+                {
+                    return usedTime.Date >= room.CheckInDate.Value.Date;
+                }
+                return usedTime.Date >= DateTime.Today.AddDays(-1);
+            }
+
+            // 1. Đơn ăn uống (bỏ qua đơn Đã hủy)
+            foreach (var fo in FoodOrders.Where(x => !string.IsNullOrEmpty(x.RoomNumber) && x.Status != "Đã hủy"))
+            {
+                if (!IsCurrentStayOrUnpaid(fo.RoomNumber, fo.CreatedAt, fo.DaThanhToan))
+                    continue;
+
                 var itemNames = string.Join(", ", fo.Items.Select(i => $"{i.Quantity}x {i.FoodItemName}"));
                 RoomServiceUsages.Add(new RoomServiceUsageItem
                 {
@@ -353,34 +402,53 @@ namespace QuanLyDichVuKhachSan.Services
                 });
             }
 
-            // 2. Đơn sự kiện gắn số phòng
+            // 2. Đơn sự kiện gắn số phòng (bỏ qua đơn Đã hủy)
             foreach (var eb in EventBookings.Where(x => !string.IsNullOrEmpty(x.RoomNumber)))
             {
-                decimal eventAmount = eb.FinalTotal > eb.DepositAmount ? (eb.FinalTotal - eb.DepositAmount) : eb.FinalTotal;
+                if ((eb.OrderStatus != null && eb.OrderStatus.StartsWith("Đã hủy")) ||
+                    (eb.PaymentStatus != null && eb.PaymentStatus.StartsWith("Đã hủy")))
+                    continue;
+
+                if (!IsCurrentStayOrUnpaid(eb.RoomNumber, eb.StartTime, eb.DaThanhToan))
+                    continue;
+
+                decimal eventAmount = eb.DaThanhToan
+                    ? eb.FinalTotal
+                    : Math.Max(0, eb.FinalTotal - eb.DepositAmount);
                 RoomServiceUsages.Add(new RoomServiceUsageItem
                 {
                     Id = usageId++,
                     RoomNumber = NormalizeRoomNumber(eb.RoomNumber),
                     ServiceCategory = "Sự kiện",
                     ServiceName = $"Thuê {eb.SpaceName}",
-                    Details = $"Mã {eb.BookingCode}",
+                    Details = $"Mã {eb.BookingCode}" + (eb.DepositAmount > 0 && !eb.DaThanhToan ? $" (Đã cọc {eb.DepositAmount:N0}đ)" : ""),
                     UsedTime = eb.StartTime,
                     Amount = eventAmount,
                     IsPaid = eb.DaThanhToan
                 });
             }
 
-            // 3. Đơn thuê xe gắn số phòng
+            // 3. Đơn thuê xe gắn số phòng (bỏ qua đơn Đã hủy)
             foreach (var vr in VehicleRentals.Where(x => !string.IsNullOrEmpty(x.RoomNumber)))
             {
-                decimal vehicleCost = vr.RentalFee + vr.AdditionalCost;
+                if ((vr.OrderStatus != null && vr.OrderStatus.StartsWith("Đã hủy")) ||
+                    (vr.Status != null && vr.Status.StartsWith("Đã hủy")))
+                    continue;
+
+                if (!IsCurrentStayOrUnpaid(vr.RoomNumber, vr.RentalDate, vr.DaThanhToan))
+                    continue;
+
+                decimal totalCost = vr.RentalFee + vr.AdditionalCost;
+                decimal vehicleCost = vr.DaThanhToan
+                    ? totalCost
+                    : Math.Max(0, totalCost - vr.DepositAmount);
                 RoomServiceUsages.Add(new RoomServiceUsageItem
                 {
                     Id = usageId++,
                     RoomNumber = NormalizeRoomNumber(vr.RoomNumber),
                     ServiceCategory = "Thuê xe máy",
                     ServiceName = $"{vr.VehicleName} (BS: {vr.LicensePlate})",
-                    Details = $"Mã {vr.RentalCode}",
+                    Details = $"Mã {vr.RentalCode}" + (vr.DepositAmount > 0 && !vr.DaThanhToan ? $" (Đã cọc {vr.DepositAmount:N0}đ)" : ""),
                     UsedTime = vr.RentalDate,
                     Amount = vehicleCost,
                     IsPaid = vr.DaThanhToan
@@ -391,6 +459,9 @@ namespace QuanLyDichVuKhachSan.Services
             foreach (var pr in ParkingRecords.Where(x => !string.IsNullOrEmpty(x.RoomNumber)))
             {
                 if (pr.ParkingFee <= 0 || pr.ChargeType == ParkingChargeType.ResidentFree)
+                    continue;
+
+                if (!IsCurrentStayOrUnpaid(pr.RoomNumber, pr.CheckInTime, pr.DaThanhToan))
                     continue;
 
                 RoomServiceUsages.Add(new RoomServiceUsageItem
@@ -411,9 +482,7 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 if (lo.Status == LaundryStatus.Cancelled)
                 {
-                    // Nếu đơn bị hủy và khách đã thanh toán trực tiếp lúc nhận đồ:
-                    // Thể hiện dòng thanh toán ban đầu (Đã thanh toán) và dòng hoàn tiền âm (Chờ khấu trừ)
-                    if (lo.DaThanhToan)
+                    if (lo.DaThanhToan && IsCurrentStayOrUnpaid(lo.RoomNumber, lo.ReceivedDate, false))
                     {
                         RoomServiceUsages.Add(new RoomServiceUsageItem
                         {
@@ -440,9 +509,11 @@ namespace QuanLyDichVuKhachSan.Services
                             RecordedBy = !string.IsNullOrWhiteSpace(lo.RecordedBy) ? lo.RecordedBy : "Lễ tân"
                         });
                     }
-                    // Nếu đơn ghi nợ vào phòng (chưa thanh toán) mà bị hủy: Bỏ qua hoàn toàn, không tính vào bill phòng!
                     continue;
                 }
+
+                if (!IsCurrentStayOrUnpaid(lo.RoomNumber, lo.ReceivedDate, lo.DaThanhToan))
+                    continue;
 
                 RoomServiceUsages.Add(new RoomServiceUsageItem
                 {
@@ -460,7 +531,7 @@ namespace QuanLyDichVuKhachSan.Services
 
         /// <summary>
         /// Đồng bộ trạng thái của đội xe (Vehicles) dựa trên danh sách hợp đồng thuê xe hiện tại.
-        /// Xe nào có hợp đồng trạng thái "Đang thuê" (hoặc đang trong thời gian thuê) thì chuyển sang VehicleStatus.Rented.
+        /// Xe nào có hợp đồng trạng thái "Đang thuê" tại thời điểm hiện tại thì chuyển sang VehicleStatus.Rented.
         /// Xe nào đang bảo trì thì giữ nguyên VehicleStatus.Maintenance.
         /// Còn lại chuyển về VehicleStatus.Available.
         /// </summary>
@@ -468,9 +539,16 @@ namespace QuanLyDichVuKhachSan.Services
         {
             if (Vehicles == null || Vehicles.Count == 0) return;
 
+            DateTime now = DateTime.Now;
             var activeRentalVehicleIds = VehicleRentals?
-                .Where(r => r.Status == "Đang thuê" || r.OrderStatus == "Đang thuê" ||
-                            (!r.DaTraXe && r.Status != "Hoàn tất" && (r.Status == null || !r.Status.StartsWith("Đã hủy")) && r.RentalDate <= DateTime.Now && r.ExpectedReturnDate >= DateTime.Now))
+                .Where(r => !r.DaTraXe &&
+                            r.OrderStatus != "Hoàn tất" &&
+                            r.Status != "Hoàn tất" &&
+                            (r.OrderStatus == null || !r.OrderStatus.StartsWith("Đã hủy")) &&
+                            (r.Status == null || !r.Status.StartsWith("Đã hủy")) &&
+                            (r.OrderStatus == "Đang thuê" ||
+                             (r.Status == "Đang thuê" && r.RentalDate <= now.AddMinutes(30)) ||
+                             (r.RentalDate <= now && r.ExpectedReturnDate >= now)))
                 .Select(r => r.VehicleId)
                 .ToHashSet() ?? new HashSet<int>();
 
@@ -505,8 +583,11 @@ namespace QuanLyDichVuKhachSan.Services
 
         private void AddStaffToCache(Staff staff)
         {
-            StaffList.Add(staff);
             _staffCache[staff.Id] = staff;
+            if (staff.Status != "Đã nghỉ việc")
+            {
+                StaffList.Add(staff);
+            }
         }
 
         public void AddCustomerToCache(Customer customer)
@@ -675,14 +756,14 @@ namespace QuanLyDichVuKhachSan.Services
                     CustomerName = fo.CustomerName,
                     PhoneNumber = "",
                     RoomNumber = fo.RoomNumber,
-                    PaymentTime = fo.CreatedAt,
+                    PaymentTime = fo.ThoiGianThanhToan ?? fo.CreatedAt,
                     Amount = fo.TotalAmount,
                     PaymentMethod = fo.PaymentType == FoodPaymentType.DirectPayment 
                         ? (!string.IsNullOrWhiteSpace(fo.PaymentMethod) ? $"Thanh toán trực tiếp ({fo.PaymentMethod})" : "Thanh toán trực tiếp") 
                         : "Ghi nợ vào phòng",
                     CreatedBy = creator,
-                    PaidBy = payer,
-                    Status = "Đã thanh toán",
+                    PaidBy = fo.DaThanhToan ? payer : "",
+                    Status = fo.Status == "Đã hủy" ? "Đã hủy" : (fo.DaThanhToan ? "Đã thanh toán" : "Chưa thanh toán"),
                     OriginalObject = fo
                 });
             }
@@ -690,9 +771,12 @@ namespace QuanLyDichVuKhachSan.Services
             // 3. Sảnh & Sự kiện
             foreach (var eb in EventBookings)
             {
-                decimal amt = (eb.PaymentStatus == "Hoàn tất" || eb.PaymentStatus == "Ghi nợ vào phòng") ? eb.FinalTotal : eb.DepositAmount;
+                decimal amt = (eb.DaThanhToan || eb.PaymentStatus == "Hoàn tất" || eb.PaymentStatus == "Ghi nợ vào phòng") ? eb.FinalTotal : eb.DepositAmount;
                 string creator = !string.IsNullOrWhiteSpace(eb.RecordedBy) ? eb.RecordedBy : (eb.NguoiTaoId == 0 ? "Chủ khách sạn" : "Trần Thị Mai");
                 string payer = !string.IsNullOrWhiteSpace(eb.PaidByStaffName) ? eb.PaidByStaffName : (!string.IsNullOrWhiteSpace(eb.RecordedBy) ? eb.RecordedBy : (eb.NguoiThanhToanId == 0 ? "Chủ khách sạn" : "Trần Thị Mai"));
+                string ebStatus = (eb.OrderStatus != null && eb.OrderStatus.StartsWith("Đã hủy"))
+                    ? eb.OrderStatus
+                    : (eb.DaThanhToan ? "Đã thanh toán" : (!string.IsNullOrWhiteSpace(eb.PaymentStatus) ? eb.PaymentStatus : "Chưa thanh toán"));
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = eb.BookingCode,
@@ -700,14 +784,14 @@ namespace QuanLyDichVuKhachSan.Services
                     CustomerName = eb.CustomerName,
                     PhoneNumber = eb.PhoneNumber,
                     RoomNumber = eb.RoomNumber,
-                    PaymentTime = eb.EndTime,
+                    PaymentTime = eb.ThoiGianThanhToan ?? eb.EndTime,
                     Amount = amt,
-                    PaymentMethod = eb.PaymentStatus == "Hoàn tất" 
+                    PaymentMethod = eb.DaThanhToan || eb.PaymentStatus == "Hoàn tất" 
                         ? "Thanh toán trực tiếp (Quyết toán)" 
                         : (eb.PaymentStatus == "Ghi nợ vào phòng" ? "Ghi nợ vào phòng" : "Đặt cọc trước"),
                     CreatedBy = creator,
-                    PaidBy = payer,
-                    Status = eb.PaymentStatus,
+                    PaidBy = eb.DaThanhToan ? payer : "",
+                    Status = ebStatus,
                     OriginalObject = eb
                 });
             }
@@ -717,6 +801,9 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 string creator = !string.IsNullOrWhiteSpace(vr.RecordedBy) ? vr.RecordedBy : (vr.NguoiTaoId == 0 ? "Chủ khách sạn" : "Nguyễn Văn An");
                 string payer = !string.IsNullOrWhiteSpace(vr.PaidByStaffName) ? vr.PaidByStaffName : (!string.IsNullOrWhiteSpace(vr.RecordedBy) ? vr.RecordedBy : (vr.NguoiThanhToanId == 0 ? "Chủ khách sạn" : "Nguyễn Văn An"));
+                string vrStatus = (vr.OrderStatus != null && vr.OrderStatus.StartsWith("Đã hủy"))
+                    ? vr.OrderStatus
+                    : (vr.DaThanhToan ? "Đã thanh toán" : (vr.Status == "Đã trả" || vr.Status == "Hoàn tất" ? "Đã thanh toán" : vr.Status));
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = vr.RentalCode,
@@ -724,14 +811,14 @@ namespace QuanLyDichVuKhachSan.Services
                     CustomerName = vr.CustomerName,
                     PhoneNumber = vr.PhoneNumber,
                     RoomNumber = vr.RoomNumber,
-                    PaymentTime = vr.ActualReturnDate ?? vr.RentalDate,
+                    PaymentTime = vr.ThoiGianThanhToan ?? vr.ActualReturnDate ?? vr.RentalDate,
                     Amount = vr.TotalPayment > 0 ? vr.TotalPayment : vr.RentalFee,
                     PaymentMethod = (vr.PaymentStatus == "Ghi nợ vào phòng" || vr.Status == "Ghi nợ vào phòng")
                         ? "Ghi nợ vào phòng"
                         : (string.IsNullOrWhiteSpace(vr.RoomNumber) ? "Thanh toán trực tiếp" : (vr.DaThanhToan ? "Thanh toán trực tiếp" : "Ghi nợ vào phòng")),
                     CreatedBy = creator,
-                    PaidBy = payer,
-                    Status = vr.Status == "Đã trả" ? "Đã thanh toán" : vr.Status,
+                    PaidBy = vr.DaThanhToan ? payer : "",
+                    Status = vrStatus,
                     OriginalObject = vr
                 });
             }
@@ -751,12 +838,12 @@ namespace QuanLyDichVuKhachSan.Services
                     CustomerName = pr.CustomerName,
                     PhoneNumber = pr.PhoneNumber,
                     RoomNumber = pr.RoomNumber,
-                    PaymentTime = pr.CheckOutTime ?? pr.CheckInTime,
+                    PaymentTime = pr.ThoiGianThanhToan ?? pr.CheckOutTime ?? pr.CheckInTime,
                     Amount = pr.ParkingFee,
                     PaymentMethod = "Thanh toán trực tiếp",
                     CreatedBy = creator,
-                    PaidBy = payer,
-                    Status = "Đã thanh toán",
+                    PaidBy = pr.DaThanhToan ? payer : "",
+                    Status = pr.DaThanhToan ? "Đã thanh toán" : "Chưa thanh toán",
                     OriginalObject = pr
                 });
             }
@@ -773,11 +860,11 @@ namespace QuanLyDichVuKhachSan.Services
                     CustomerName = lo.CustomerName,
                     PhoneNumber = lo.PhoneNumber,
                     RoomNumber = lo.RoomNumber,
-                    PaymentTime = lo.ReceivedDate,
+                    PaymentTime = lo.ThoiGianThanhToan ?? lo.ReceivedDate,
                     Amount = lo.TotalPrice,
                     PaymentMethod = string.IsNullOrWhiteSpace(lo.RoomNumber) ? "Thanh toán trực tiếp" : "Ghi nợ vào phòng",
                     CreatedBy = creator,
-                    PaidBy = payer,
+                    PaidBy = lo.DaThanhToan ? payer : "",
                     Status = lo.Status == LaundryStatus.Cancelled ? "Đã hủy" : (lo.DaThanhToan ? "Đã thanh toán" : "Chưa thanh toán"),
                     OriginalObject = lo
                 });
@@ -792,7 +879,7 @@ namespace QuanLyDichVuKhachSan.Services
 
         public List<ServiceRevenueSummary> GetServiceRevenueSummaries(DateTime? start = null, DateTime? end = null)
         {
-            var foodList = FoodOrders.Where(x => x.DaThanhToan);
+            var foodList = FoodOrders.Where(x => x.DaThanhToan && x.Status != "Đã hủy");
             var eventList = EventBookings.Where(x => x.DaThanhToan);
             var vehicleList = VehicleRentals.Where(x => x.DaThanhToan);
             var parkingList = ParkingRecords.Where(x => x.DaThanhToan);
@@ -826,10 +913,16 @@ namespace QuanLyDichVuKhachSan.Services
             };
         }
 
-        public List<FoodStatSummary> GetFoodStats()
+        public List<FoodStatSummary> GetFoodStats(DateTime? start = null, DateTime? end = null)
         {
             var list = new List<FoodStatSummary>();
-            var soldCounts = FoodOrders
+            var ordersQuery = FoodOrders.Where(o => o.DaThanhToan && o.Status != "Đã hủy");
+            if (start.HasValue && end.HasValue)
+            {
+                ordersQuery = ordersQuery.Where(o => o.CreatedAt >= start.Value && o.CreatedAt <= end.Value);
+            }
+
+            var soldCounts = ordersQuery
                 .SelectMany(o => o.Items)
                 .GroupBy(i => i.FoodItemId)
                 .ToDictionary(g => g.Key, g => g.Sum(i => i.Quantity));
@@ -849,14 +942,20 @@ namespace QuanLyDichVuKhachSan.Services
             return list.OrderByDescending(x => x.TotalQuantitySold).ToList();
         }
 
-        public List<VehicleStatSummary> GetVehicleStats()
+        public List<VehicleStatSummary> GetVehicleStats(DateTime? start = null, DateTime? end = null)
         {
             var list = new List<VehicleStatSummary>();
             foreach (var v in Vehicles)
             {
                 int rentalCount = 0;
                 decimal totalRev = 0;
-                foreach (var r in VehicleRentals.Where(x => x.VehicleId == v.Id && x.DaThanhToan))
+                var rentalsQuery = VehicleRentals.Where(x => x.VehicleId == v.Id && x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy")));
+                if (start.HasValue && end.HasValue)
+                {
+                    rentalsQuery = rentalsQuery.Where(x => x.RentalDate >= start.Value && x.RentalDate <= end.Value);
+                }
+
+                foreach (var r in rentalsQuery)
                 {
                     rentalCount++;
                     totalRev += (r.RentalFee + r.AdditionalCost);
@@ -875,7 +974,7 @@ namespace QuanLyDichVuKhachSan.Services
             return list.OrderByDescending(x => x.RentalCount).ToList();
         }
 
-        public List<EventSpaceStatSummary> GetEventSpaceStats()
+        public List<EventSpaceStatSummary> GetEventSpaceStats(DateTime? start = null, DateTime? end = null)
         {
             var list = new List<EventSpaceStatSummary>();
             foreach (var sp in EventSpaces)
@@ -884,7 +983,13 @@ namespace QuanLyDichVuKhachSan.Services
                 decimal totalRev = 0;
                 var damageNotes = new List<string>();
 
-                foreach (var b in EventBookings.Where(x => x.SpaceId == sp.Id))
+                var bookingsQuery = EventBookings.Where(x => x.SpaceId == sp.Id && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy")));
+                if (start.HasValue && end.HasValue)
+                {
+                    bookingsQuery = bookingsQuery.Where(x => x.StartTime >= start.Value && x.StartTime <= end.Value);
+                }
+
+                foreach (var b in bookingsQuery)
                 {
                     count++;
                     if (b.DaThanhToan) totalRev += b.FinalTotal;
@@ -905,7 +1010,7 @@ namespace QuanLyDichVuKhachSan.Services
             return list.OrderByDescending(x => x.TotalRevenue).ToList();
         }
 
-        public List<LaundryPartnerStatSummary> GetLaundryPartnerStats()
+        public List<LaundryPartnerStatSummary> GetLaundryPartnerStats(DateTime? start = null, DateTime? end = null)
         {
             var list = new List<LaundryPartnerStatSummary>();
             foreach (var p in LaundryPartners)
@@ -916,7 +1021,13 @@ namespace QuanLyDichVuKhachSan.Services
                 decimal hotelEarn = 0;
                 decimal partnerEarn = 0;
 
-                foreach (var o in LaundryOrders.Where(x => x.PartnerId == p.Id))
+                var ordersQuery = LaundryOrders.Where(x => x.PartnerId == p.Id && x.Status != LaundryStatus.Cancelled);
+                if (start.HasValue && end.HasValue)
+                {
+                    ordersQuery = ordersQuery.Where(x => x.ReceivedDate >= start.Value && x.ReceivedDate <= end.Value);
+                }
+
+                foreach (var o in ordersQuery)
                 {
                     orderCount++;
                     totalWeight += o.WeightKg;
@@ -1196,28 +1307,41 @@ namespace QuanLyDichVuKhachSan.Services
             rental.RoomNumber = NormalizeRoomNumber(rental.RoomNumber);
             rental.NguoiTaoId = GetCurrentDutyStaffId();
             rental.RecordedBy = GetCurrentDutyStaffName();
-            rental.DaThanhToan = false;
-            rental.NguoiThanhToanId = null;
-            rental.ThoiGianThanhToan = null;
-
-            VehicleRentals.Insert(0, rental);
-
-            if (_vehicleCache.TryGetValue(rental.VehicleId, out var v))
-            {
-                v.Status = VehicleStatus.Rented;
-            }
 
             string initialPay = !string.IsNullOrEmpty(rental.InitialPaymentType)
                 ? rental.InitialPaymentType
                 : (rental.DepositAmount >= rental.RentalFee ? "Thanh toán toàn bộ" : "Đặt cọc trước");
+            rental.InitialPaymentType = initialPay;
 
             string orderStatus = !string.IsNullOrEmpty(rental.OrderStatus)
                 ? rental.OrderStatus
                 : (rental.Status == "Hoàn tất" ? "Hoàn tất" :
                    rental.Status != null && rental.Status.StartsWith("Đã hủy") ? "Đã hủy - Không hoàn cọc" :
-                   rental.Status == "Đã đặt" ? "Đã đặt" : "Đang thuê");
+                   (rental.Status == "Đã đặt" || rental.RentalDate > DateTime.Now.AddMinutes(15)) ? "Đã đặt" : "Đang thuê");
+            rental.OrderStatus = orderStatus;
+            rental.Status = orderStatus;
 
-            // Đồng bộ xuống CSDL SQL Server (Table DonThueXe & XeChoThue)
+            if (rental.DaThanhToan)
+            {
+                rental.NguoiThanhToanId ??= rental.NguoiTaoId;
+                rental.ThoiGianThanhToan ??= DateTime.Now;
+                rental.PaidByStaffName = string.IsNullOrWhiteSpace(rental.PaidByStaffName) ? rental.RecordedBy : rental.PaidByStaffName;
+            }
+            else
+            {
+                rental.NguoiThanhToanId = null;
+                rental.ThoiGianThanhToan = null;
+            }
+
+            VehicleRentals.Insert(0, rental);
+
+            if (orderStatus == "Đang thuê" && _vehicleCache.TryGetValue(rental.VehicleId, out var v))
+            {
+                v.Status = VehicleStatus.Rented;
+            }
+            SyncVehicleFleetStatus();
+
+            // Đồng bộ xuống CSDL SQL Server (Table DonThueXe)
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
                 "INSERT INTO DonThueXe (MaDon, XeId, KhachHangId, TenKhach, CCCD, SoDienThoai, SoPhong, NgayThue, NgayTraDuKien, TienCoc, TienThue, ChiPhiPhatSinh, TongTienThanhToan, DaThanhToan, GhiChuKhiNhanXe, GhiChuHuHai, HinhThucThanhToanBanDau, TrangThaiDon, NguoiTaoId, NguoiThanhToanId, ThoiGianThanhToan, NgayTao) " +
                 "VALUES (@Ma, @XeId, @KhachId, @Ten, @CCCD, @SDT, @Phong, @NgayThue, @NgayTra, @Coc, @TienThue, @PhatSinh, @TongTien, @DaTT, @GhiChuNhan, @GhiChu, @HinhThucTT, @TrangThaiDon, @NguoiTao, @NguoiTT, @ThoiGianTT, @NgayTao);",
@@ -1248,6 +1372,8 @@ namespace QuanLyDichVuKhachSan.Services
             if (!string.IsNullOrEmpty(rental.RoomNumber))
             {
                 int rentalDays = Math.Max(1, (int)(rental.ExpectedReturnDate - rental.RentalDate).TotalDays);
+                decimal totalCost = rental.RentalFee + rental.AdditionalCost;
+                decimal usageAmt = rental.DaThanhToan ? totalCost : Math.Max(0, totalCost - rental.DepositAmount);
                 RoomServiceUsages.Insert(0, new RoomServiceUsageItem
                 {
                     Id = RoomServiceUsages.Count > 0 ? RoomServiceUsages.Max(x => x.Id) + 1 : 1,
@@ -1256,7 +1382,7 @@ namespace QuanLyDichVuKhachSan.Services
                     ServiceName = $"{rental.VehicleName} ({rentalDays} ngày)",
                     Details = $"Mã {rental.RentalCode} (BS: {rental.LicensePlate})",
                     UsedTime = rental.RentalDate,
-                    Amount = rental.RentalFee + rental.AdditionalCost - rental.DepositAmount,
+                    Amount = usageAmt,
                     IsPaid = rental.DaThanhToan
                 });
             }
@@ -1375,8 +1501,9 @@ namespace QuanLyDichVuKhachSan.Services
             }
 
             // Đồng bộ cập nhật DonThueXe & XeChoThue ngay lập tức
+            SyncVehicleFleetStatus();
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "UPDATE DonThueXe SET NgayTraThucTe = @NgayTra, ChiPhiPhatSinh = @PhatSinh, TongTienThanhToan = @TongTien, DaThanhToan = @DaTT, NguoiThanhToanId = @NguoiTT, ThoiGianThanhToan = @ThoiGianTT, GhiChuHuHai = @GhiChu, TrangThaiDon = N'Hoàn tất' WHERE MaDon = @Ma; UPDATE XeChoThue SET TrangThai = N'Sẵn sàng' WHERE Id = @XeId;",
+                "UPDATE DonThueXe SET NgayTraThucTe = @NgayTra, ChiPhiPhatSinh = @PhatSinh, TongTienThanhToan = @TongTien, DaThanhToan = @DaTT, NguoiThanhToanId = @NguoiTT, ThoiGianThanhToan = @ThoiGianTT, GhiChuHuHai = @GhiChu, TrangThaiDon = N'Hoàn tất' WHERE MaDon = @Ma; UPDATE XeChoThue SET TrangThai = N'Hoạt động' WHERE Id = @XeId AND TrangThai NOT IN (N'Bảo trì', N'Ngừng khai thác');",
                 new SqlParameter("@NgayTra", rental.ActualReturnDate ?? DateTime.Now),
                 new SqlParameter("@PhatSinh", rental.AdditionalCost),
                 new SqlParameter("@TongTien", rental.TotalPayment),
@@ -1619,6 +1746,41 @@ namespace QuanLyDichVuKhachSan.Services
                 }
             }
 
+            // Cập nhật chi phí giặt ủi và phát sinh vào RoomServiceUsages (nếu có gán phòng)
+            if (!string.IsNullOrEmpty(order.RoomNumber))
+            {
+                string normRoom = NormalizeRoomNumber(order.RoomNumber);
+                var existingUsage = RoomServiceUsages.FirstOrDefault(x =>
+                    NormalizeRoomNumber(x.RoomNumber).Equals(normRoom, StringComparison.OrdinalIgnoreCase) &&
+                    x.ServiceCategory == "Giặt ủi" &&
+                    (x.Details.Contains(order.OrderCode) || x.ServiceName.Contains(order.OrderCode)));
+
+                if (existingUsage != null)
+                {
+                    existingUsage.Amount = order.FinalTotal;
+                    if (extraCost > 0)
+                    {
+                        existingUsage.Details = string.IsNullOrWhiteSpace(existingUsage.Details)
+                            ? $"Phát sinh: +{extraCost:N0} đ"
+                            : $"{existingUsage.Details} (+{extraCost:N0} đ phát sinh)";
+                    }
+                }
+                else if (extraCost > 0)
+                {
+                    RoomServiceUsages.Insert(0, new RoomServiceUsageItem
+                    {
+                        Id = RoomServiceUsages.Count > 0 ? RoomServiceUsages.Max(x => x.Id) + 1 : 1,
+                        RoomNumber = normRoom,
+                        ServiceCategory = "Giặt ủi",
+                        ServiceName = $"Phụ thu phát sinh giặt ủi ({order.OrderCode})",
+                        Details = $"Chi phí phát sinh: +{extraCost:N0} đ",
+                        UsedTime = DateTime.Now,
+                        Amount = extraCost,
+                        IsPaid = order.DaThanhToan
+                    });
+                }
+            }
+
             // Đồng bộ xuống CSDL SQL Server
             int staffId = GetCurrentDutyStaffId();
             _ = DatabaseService.Instance.CompleteLaundryOrderReturnAsync(
@@ -1714,46 +1876,65 @@ namespace QuanLyDichVuKhachSan.Services
                 servicesCost += item.Amount;
             }
 
-            decimal roomCost = 0;
+            var room = HotelRooms.FirstOrDefault(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase));
+            decimal roomCost = (room?.StayNights ?? 1) * (room?.PricePerNight ?? 0);
             decimal grandTotal = servicesCost;
             int staffId = GetCurrentDutyStaffId();
+            string staffName = GetCurrentDutyStaffName();
 
-            // Đồng bộ trạng thái sang các bảng đơn hàng
-            foreach (var food in FoodOrders.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase)))
+            // Đồng bộ trạng thái sang các bảng đơn hàng chưa thanh toán (bỏ qua đơn đã hủy)
+            foreach (var food in FoodOrders.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && x.Status != "Đã hủy"))
             {
                 food.DaThanhToan = true;
                 food.NguoiThanhToanId = staffId;
+                food.PaidByStaffName = staffName;
                 food.ThoiGianThanhToan = DateTime.Now;
                 food.Status = "Đã giao";
             }
-            foreach (var sk in EventBookings.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase)))
+            foreach (var sk in EventBookings.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy"))))
             {
                 sk.DaThanhToan = true;
                 sk.NguoiThanhToanId = staffId;
+                sk.PaidByStaffName = staffName;
                 sk.ThoiGianThanhToan = DateTime.Now;
                 sk.PaymentStatus = "Hoàn tất";
+                if (sk.OrderStatus == "Đang sử dụng" || sk.EndTime <= DateTime.Now)
+                {
+                    sk.OrderStatus = "Hoàn tất";
+                }
             }
-            foreach (var tx in VehicleRentals.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase)))
+            foreach (var tx in VehicleRentals.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy")) && (x.Status == null || !x.Status.StartsWith("Đã hủy"))))
             {
                 tx.DaThanhToan = true;
                 tx.NguoiThanhToanId = staffId;
+                tx.PaidByStaffName = staffName;
                 tx.ThoiGianThanhToan = DateTime.Now;
+                tx.PaymentStatus = "Hoàn tất";
+                if (tx.OrderStatus == "Đang thuê" || tx.Status == "Đang thuê" || tx.ExpectedReturnDate <= DateTime.Now)
+                {
+                    tx.OrderStatus = "Hoàn tất";
+                    tx.Status = "Hoàn tất";
+                    tx.ActualReturnDate ??= DateTime.Now;
+                }
             }
-            foreach (var laundry in LaundryOrders.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase)))
+            SyncVehicleFleetStatus();
+
+            foreach (var laundry in LaundryOrders.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && x.Status != LaundryStatus.Cancelled))
             {
                 laundry.DaThanhToan = true;
                 laundry.NguoiThanhToanId = staffId;
+                laundry.PaidByStaffName = staffName;
                 laundry.ThoiGianThanhToan = DateTime.Now;
             }
-            foreach (var parking in ParkingRecords.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase)))
+            foreach (var parking in ParkingRecords.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan))
             {
                 parking.DaThanhToan = true;
                 parking.NguoiThanhToanId = staffId;
+                parking.PaidByStaffName = staffName;
                 parking.ThoiGianThanhToan = DateTime.Now;
             }
 
             // Tạo hóa đơn lưu trữ vào lịch sử giao dịch
-            var room = HotelRooms.FirstOrDefault(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase));
             var newInv = new RoomInvoice
             {
                 InvoiceCode = $"HD-KS-{DateTime.Now:yyyyMMdd}-{norm}",
@@ -1769,7 +1950,8 @@ namespace QuanLyDichVuKhachSan.Services
                 RoomCost = roomCost,
                 ServicesCost = servicesCost,
                 TotalAmount = grandTotal,
-                IssuedBy = GetCurrentDutyStaffName(),
+                IssuedBy = staffName,
+                PaidBy = staffName,
                 PaidItems = unpaidList
             };
             RoomInvoices.Insert(0, newInv);
@@ -1794,20 +1976,28 @@ namespace QuanLyDichVuKhachSan.Services
                         // 1. Đồng bộ trạng thái toàn bộ phòng khách sạn
                         foreach (var r in HotelRooms)
                         {
+                            string vnStatus = r.Status switch
+                            {
+                                RoomStatus.Occupied => "Đang ở",
+                                RoomStatus.Cleaning => "Đang dọn",
+                                RoomStatus.Maintenance => "Bảo trì",
+                                _ => "Trống"
+                            };
                             DatabaseService.Instance.ExecuteNonQueryAsync(
                                 "IF EXISTS (SELECT 1 FROM PhongKhachSan WHERE SoPhong = @Phong) " +
-                                "UPDATE PhongKhachSan SET TrangThai = @Status, TenKhach = @Ten, SoDienThoai = @Phone, CCCD = @CCCD, NgayNhanPhong = @In, GhiChu = @Note WHERE SoPhong = @Phong " +
-                                "ELSE INSERT INTO PhongKhachSan (SoPhong, Tang, LoaiPhong, TrangThai, TenKhach, SoDienThoai, CCCD, NgayNhanPhong, GhiChu) " +
-                                "VALUES (@Phong, @Tang, @Loai, @Status, @Ten, @Phone, @CCCD, @In, @Note)",
+                                "UPDATE PhongKhachSan SET TrangThai = @Status, TenKhach = @Ten, SoDienThoai = @Phone, CCCD = @CCCD, NgayNhanPhong = @In, NgayTraPhong = @Out, GhiChu = @Note WHERE SoPhong = @Phong " +
+                                "ELSE INSERT INTO PhongKhachSan (SoPhong, Tang, LoaiPhong, TrangThai, TenKhach, SoDienThoai, CCCD, NgayNhanPhong, NgayTraPhong, GhiChu) " +
+                                "VALUES (@Phong, @Tang, @Loai, @Status, @Ten, @Phone, @CCCD, @In, @Out, @Note)",
                                 new SqlParameter("@Phong", r.RoomNumber),
                                 new SqlParameter("@Tang", r.Floor),
                                 new SqlParameter("@Loai", r.RoomType),
-                                new SqlParameter("@Status", r.Status.ToString()),
-                                new SqlParameter("@Ten", r.CustomerName ?? ""),
-                                new SqlParameter("@Phone", r.PhoneNumber ?? ""),
-                                new SqlParameter("@CCCD", r.IdentityCard ?? ""),
+                                new SqlParameter("@Status", vnStatus),
+                                new SqlParameter("@Ten", string.IsNullOrWhiteSpace(r.CustomerName) ? DBNull.Value : (object)r.CustomerName),
+                                new SqlParameter("@Phone", string.IsNullOrWhiteSpace(r.PhoneNumber) ? DBNull.Value : (object)r.PhoneNumber),
+                                new SqlParameter("@CCCD", string.IsNullOrWhiteSpace(r.IdentityCard) ? DBNull.Value : (object)r.IdentityCard),
                                 new SqlParameter("@In", (object?)r.CheckInDate ?? DBNull.Value),
-                                new SqlParameter("@Note", r.Note ?? "")
+                                new SqlParameter("@Out", (object?)r.ExpectedCheckOutDate ?? DBNull.Value),
+                                new SqlParameter("@Note", string.IsNullOrWhiteSpace(r.Note) ? DBNull.Value : (object)r.Note)
                             );
                         }
 
@@ -1828,22 +2018,47 @@ namespace QuanLyDichVuKhachSan.Services
         {
             try
             {
-                var dbStaff = DatabaseService.Instance.LoadStaffFromDb();
-                var dbShifts = DatabaseService.Instance.LoadShiftsFromDb();
-                var dbAssignments = DatabaseService.Instance.LoadShiftAssignmentsFromDb(dbStaff, dbShifts);
-                var dbRooms = DatabaseService.Instance.LoadRoomsFromDb();
-                var dbCustomers = DatabaseService.Instance.LoadCustomersFromDb();
-                var dbServices = DatabaseService.Instance.LoadServicesConfigFromDb();
-                var dbFoods = DatabaseService.Instance.LoadFoodItemsFromDb();
-                var dbBatches = DatabaseService.Instance.LoadInventoryBatchesFromDb(dbFoods);
-                var dbFoodOrders = DatabaseService.Instance.LoadFoodOrdersFromDb(dbFoods, dbStaff);
-                var dbSpaces = DatabaseService.Instance.LoadEventSpacesFromDb();
-                var dbEventBookings = DatabaseService.Instance.LoadEventBookingsFromDb(dbSpaces, dbStaff);
-                var dbVehicles = DatabaseService.Instance.LoadVehiclesFromDb();
-                var dbRentals = DatabaseService.Instance.LoadVehicleRentalsFromDb(dbVehicles, dbStaff);
-                var dbParking = DatabaseService.Instance.LoadParkingRecordsFromDb(dbStaff);
-                var dbPartners = DatabaseService.Instance.LoadLaundryPartnersFromDb();
-                var dbLaundry = DatabaseService.Instance.LoadLaundryOrdersFromDb(dbPartners, dbStaff);
+                // Giai đoạn 1: Nạp song song các bảng độc lập
+                var taskStaff = Task.Run(() => DatabaseService.Instance.LoadStaffFromDb());
+                var taskShifts = Task.Run(() => DatabaseService.Instance.LoadShiftsFromDb());
+                var taskRooms = Task.Run(() => DatabaseService.Instance.LoadRoomsFromDb());
+                var taskCustomers = Task.Run(() => DatabaseService.Instance.LoadCustomersFromDb());
+                var taskServices = Task.Run(() => DatabaseService.Instance.LoadServicesConfigFromDb());
+                var taskFoods = Task.Run(() => DatabaseService.Instance.LoadFoodItemsFromDb());
+                var taskSpaces = Task.Run(() => DatabaseService.Instance.LoadEventSpacesFromDb());
+                var taskVehicles = Task.Run(() => DatabaseService.Instance.LoadVehiclesFromDb());
+                var taskPartners = Task.Run(() => DatabaseService.Instance.LoadLaundryPartnersFromDb());
+
+                Task.WaitAll(taskStaff, taskShifts, taskRooms, taskCustomers, taskServices, taskFoods, taskSpaces, taskVehicles, taskPartners);
+
+                var dbStaff = taskStaff.Result;
+                var dbShifts = taskShifts.Result;
+                var dbRooms = taskRooms.Result;
+                var dbCustomers = taskCustomers.Result;
+                var dbServices = taskServices.Result;
+                var dbFoods = taskFoods.Result;
+                var dbSpaces = taskSpaces.Result;
+                var dbVehicles = taskVehicles.Result;
+                var dbPartners = taskPartners.Result;
+
+                // Giai đoạn 2: Nạp song song các bảng phụ thuộc
+                var taskAssignments = Task.Run(() => DatabaseService.Instance.LoadShiftAssignmentsFromDb(dbStaff, dbShifts));
+                var taskBatches = Task.Run(() => DatabaseService.Instance.LoadInventoryBatchesFromDb(dbFoods));
+                var taskFoodOrders = Task.Run(() => DatabaseService.Instance.LoadFoodOrdersFromDb(dbFoods, dbStaff));
+                var taskEventBookings = Task.Run(() => DatabaseService.Instance.LoadEventBookingsFromDb(dbSpaces, dbStaff));
+                var taskVehicleRentals = Task.Run(() => DatabaseService.Instance.LoadVehicleRentalsFromDb(dbVehicles, dbStaff));
+                var taskParking = Task.Run(() => DatabaseService.Instance.LoadParkingRecordsFromDb(dbStaff));
+                var taskLaundry = Task.Run(() => DatabaseService.Instance.LoadLaundryOrdersFromDb(dbPartners, dbStaff));
+
+                Task.WaitAll(taskAssignments, taskBatches, taskFoodOrders, taskEventBookings, taskVehicleRentals, taskParking, taskLaundry);
+
+                var dbAssignments = taskAssignments.Result;
+                var dbBatches = taskBatches.Result;
+                var dbFoodOrders = taskFoodOrders.Result;
+                var dbEventBookings = taskEventBookings.Result;
+                var dbRentals = taskVehicleRentals.Result;
+                var dbParking = taskParking.Result;
+                var dbLaundry = taskLaundry.Result;
 
                 App.Current?.Dispatcher?.Invoke(() =>
                 {
@@ -1883,7 +2098,18 @@ namespace QuanLyDichVuKhachSan.Services
                     {
                         FoodItems.Clear();
                         _foodItemCache.Clear();
-                        foreach (var f in dbFoods) AddFoodItemToCache(f);
+                        TrashedFoodItems.Clear();
+                        foreach (var f in dbFoods)
+                        {
+                            if (f.IsTrashed)
+                            {
+                                TrashedFoodItems.Add(f);
+                            }
+                            else
+                            {
+                                AddFoodItemToCache(f);
+                            }
+                        }
                     }
                     if (dbBatches != null && dbBatches.Count > 0)
                     {

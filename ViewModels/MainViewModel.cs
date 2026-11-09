@@ -85,6 +85,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public ICommand OpenNotificationTargetCommand { get; }
 
         public event Action? RequestLogout;
+        public event Action<string, Action?>? RequestTabTransition;
 
         public MainViewModel()
         {
@@ -192,20 +193,50 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     return;
                 }
 
-                CurrentTab = tabName;
+                if (_currentTab == tabName)
+                    return;
 
-                if (tabName == "RoomMap")
+                Action refreshAction = () => RefreshTabData(tabName);
+
+                if (RequestTabTransition != null)
                 {
+                    RequestTabTransition.Invoke(tabName, refreshAction);
+                }
+                else
+                {
+                    CurrentTab = tabName;
+                    refreshAction();
+                }
+            }
+        }
+
+        public void RefreshTabData(string tabName)
+        {
+            switch (tabName)
+            {
+                case "RoomMap":
                     RoomMapVM.ApplyFilter();
                     RoomMapVM.LoadServicesForSelectedRoom();
                     RoomMapVM.NotifyAllStateChanges();
-                }
-                if (tabName == "Customers") CustomerVM.ApplyFilter();
-                if (tabName == "Inventory") InventoryVM.RefreshAll();
-                if (tabName == "Food") FoodVM.ApplyFoodFilter();
-                if (tabName == "Statistics") StatisticsVM.RefreshStatistics();
-                if (tabName == "Vehicle") VehicleVM.ApplyVehicleFilter();
-                if (tabName == "Transactions") TransactionsVM.Refresh();
+                    break;
+                case "Customers":
+                    CustomerVM.ApplyFilter();
+                    break;
+                case "Inventory":
+                    InventoryVM.RefreshAll();
+                    break;
+                case "Food":
+                    FoodVM.ApplyFoodFilter();
+                    break;
+                case "Statistics":
+                    StatisticsVM.RefreshStatistics();
+                    break;
+                case "Vehicle":
+                    VehicleVM.ApplyVehicleFilter();
+                    break;
+                case "Transactions":
+                    TransactionsVM.Refresh();
+                    break;
             }
         }
 

@@ -12,6 +12,43 @@ namespace QuanLyDichVuKhachSan.Views
         public InventoryManagementView()
         {
             InitializeComponent();
+            DataContextChanged += OnDataContextChanged;
+        }
+
+        private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if (e.OldValue is InventoryViewModel oldVm)
+            {
+                oldVm.RequestSubTabTransition -= OnRequestSubTabTransition;
+            }
+            if (e.NewValue is InventoryViewModel newVm)
+            {
+                newVm.RequestSubTabTransition += OnRequestSubTabTransition;
+            }
+        }
+
+        private void OnRequestSubTabTransition(string subTab)
+        {
+            if (DataContext is not InventoryViewModel vm) return;
+
+            FrameworkElement? targetContainer = subTab switch
+            {
+                "Receipt" => SubTabReceipt,
+                "Catalog" => SubTabCatalog,
+                "History" => SubTabHistory,
+                _ => null
+            };
+
+            if (targetContainer != null)
+            {
+                var regions = Helpers.TabProgressiveRender.PrepareStage1(targetContainer);
+                vm.ActiveTab = subTab;
+                Helpers.TabProgressiveRender.ScheduleStage2(targetContainer, regions, null);
+            }
+            else
+            {
+                vm.ActiveTab = subTab;
+            }
         }
 
         private void DataGridRow_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)

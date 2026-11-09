@@ -61,6 +61,7 @@
 
                         <!-- DataGrid hoàn toàn chỉ đọc (IsReadOnly=True) -->
                         <DataGrid Grid.Row="1" 
+                                  helpers:TabProgressiveRender.IsDataRegion="True"
                                   ItemsSource="{Binding Data.StaffList}" 
                                   SelectedItem="{Binding SelectedStaffToAssign, Mode=TwoWay}"
                                   IsReadOnly="True" 
@@ -194,7 +195,7 @@
                     </Border>
 
                     <!-- Weekly Timetable 7 Columns Grid -->
-                    <ItemsControl Grid.Row="2" ItemsSource="{Binding WeeklyDays}">
+                    <ItemsControl Grid.Row="2" ItemsSource="{Binding WeeklyDays}" helpers:TabProgressiveRender.IsDataRegion="True">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <UniformGrid Columns="7"/>

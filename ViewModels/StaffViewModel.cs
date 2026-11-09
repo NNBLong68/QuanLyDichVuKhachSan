@@ -575,13 +575,17 @@ END";
         {
             if (parameter is Staff staff)
             {
-                var res = MessageBox.Show($"Bạn có chắc chắn muốn xóa nhân viên [{staff.FullName}]?", "Thông báo", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                var res = MessageBox.Show($"Bạn có chắc chắn muốn cho nhân viên [{staff.FullName}] nghỉ việc?\n\n" +
+                    $"• Trạng thái nhân viên sẽ chuyển thành 'Đã nghỉ việc' và ẩn khỏi danh sách ca trực.\n" +
+                    $"• Các ca trực từ hôm nay trở đi sẽ tự động hủy.\n" +
+                    $"• Lịch sử các hóa đơn/giao dịch trước đây vẫn được lưu trữ kiểm toán đầy đủ.", "Thông báo", MessageBoxButton.YesNo, MessageBoxImage.Question);
                 if (res == MessageBoxResult.Yes)
                 {
+                    staff.Status = "Đã nghỉ việc";
                     Data.StaffList.Remove(staff);
 
-                    // Xóa các phân công ca trực của nhân viên này khỏi bộ nhớ RAM
-                    var assignsToRemove = Data.ShiftAssignments.Where(a => a.StaffId == staff.Id).ToList();
+                    // Xóa các phân công ca trực từ hôm nay trở đi của nhân viên này
+                    var assignsToRemove = Data.ShiftAssignments.Where(a => a.StaffId == staff.Id && a.ShiftDate >= DateTime.Today).ToList();
                     foreach (var a in assignsToRemove)
                     {
                         Data.ShiftAssignments.Remove(a);
@@ -592,14 +596,16 @@ END";
                         SelectedStaffToAssign = Data.StaffList.FirstOrDefault();
                     }
 
-                    // Xóa khỏi CSDL SQL Server (Table PhanCongCaTruc & NhanVien)
+                    // Cập nhật CSDL SQL Server (Hủy ca trực tương lai & cập nhật trạng thái 'Đã nghỉ việc')
                     _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                        "DELETE FROM PhanCongCaTruc WHERE NhanVienId = @Id; DELETE FROM NhanVien WHERE Id = @Id OR MaNV = @Code;",
+                        "DELETE FROM PhanCongCaTruc WHERE NhanVienId = @Id AND NgayTruc >= CAST(GETDATE() AS DATE); " +
+                        "UPDATE NhanVien SET TrangThai = N'Đã nghỉ việc' WHERE Id = @Id OR MaNV = @Code;",
                         new SqlParameter("@Id", staff.Id),
                         new SqlParameter("@Code", staff.Code)
                     );
 
                     RefreshWeeklySchedule();
+                    MessageBox.Show($"Đã chuyển trạng thái nhân viên [{staff.FullName}] sang 'Đã nghỉ việc' thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
         }

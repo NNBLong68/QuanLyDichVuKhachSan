@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:helpers="clr-namespace:QuanLyDichVuKhachSan.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="800" d:DesignWidth="1200"
              Background="#F1F5F9"
@@ -23,9 +24,6 @@
         <!-- LEFT PANEL: SƠ ĐỒ 5 TẦNG PHÒNG (25 PHÒNG)                                -->
         <!-- ========================================================================= -->
         <Border Grid.Column="0" Background="White" CornerRadius="16" BorderBrush="#E2E8F0" BorderThickness="1" Padding="20">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="15" ShadowDepth="3" Opacity="0.05" Color="#000000"/>
-            </Border.Effect>
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/> <!-- Title & Legend -->
@@ -117,7 +115,7 @@
                 </WrapPanel>
 
                 <!-- 3. Room Grid (Hierarchical 5 floors x 4 rooms) -->
-                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" helpers:TabProgressiveRender.IsDataRegion="True">
                     <ItemsControl ItemsSource="{Binding FloorGroups}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -271,9 +269,6 @@
         <!-- RIGHT PANEL: CHI TIẾT KHÁCH HÀNG & DỊCH VỤ SỬ DỤNG & XUẤT BILL           -->
         <!-- ========================================================================= -->
         <Border Grid.Column="2" Background="White" CornerRadius="16" BorderBrush="#E2E8F0" BorderThickness="1" Padding="20">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="15" ShadowDepth="3" Opacity="0.05" Color="#000000"/>
-            </Border.Effect>
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/> <!-- Customer Info Card -->
@@ -467,6 +462,7 @@
 
                     <!-- Services DataGrid -->
                     <DataGrid x:Name="GridRoomServices" Grid.Row="1" 
+                              helpers:TabProgressiveRender.IsDataRegion="True"
                               ItemsSource="{Binding CurrentRoomServices}" 
                               SelectedItem="{Binding SelectedRoomService, Mode=TwoWay}"
                               AutoGenerateColumns="False" 

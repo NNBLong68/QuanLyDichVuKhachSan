@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:helpers="clr-namespace:QuanLyDichVuKhachSan.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="800" d:DesignWidth="1100"
              UseLayoutRounding="True"
@@ -40,7 +41,7 @@
                         <TextBlock Text="BIỂU ĐỒ TỶ TRỌNG DOANH THU" FontWeight="Bold" Foreground="#1E293B" FontSize="13" HorizontalAlignment="Center" Margin="0,0,0,12"/>
                         
                         <!-- Vùng vẽ biểu đồ tròn -->
-                        <Grid Width="210" Height="210" HorizontalAlignment="Center">
+                        <Grid Width="210" Height="210" HorizontalAlignment="Center" helpers:TabProgressiveRender.IsDataRegion="True">
                             <ItemsControl ItemsSource="{Binding PieSlices}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -61,7 +62,7 @@
                         </Grid>
 
                         <!-- Chú thích màu sắc (Legend: Màu gì - Dịch vụ gì) -->
-                        <ItemsControl ItemsSource="{Binding RevenueSummaries}" Margin="0,14,0,0">
+                        <ItemsControl ItemsSource="{Binding RevenueSummaries}" Margin="0,14,0,0" helpers:TabProgressiveRender.IsDataRegion="True">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="0,3">
@@ -197,7 +198,7 @@
             <Border Grid.Row="2" Style="{StaticResource CardPanel}" Margin="0,0,0,24">
                 <StackPanel>
                     <TextBlock Text="1. BẢNG PHÂN BỔ TỔNG DOANH THU THEO TỪNG DỊCH VỤ" FontSize="15" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,12"/>
-                    <DataGrid ItemsSource="{Binding RevenueSummaries}" Height="220">
+                    <DataGrid ItemsSource="{Binding RevenueSummaries}" Height="220" helpers:TabProgressiveRender.IsDataRegion="True">
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Header="Màu" Width="60">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -233,7 +234,7 @@
                 <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource CardPanel}">
                     <StackPanel>
                         <TextBlock Text="2. THỐNG KÊ ẨM THỰC, MÓN BÁN CHẠY &amp; TỒN KHO" FontSize="14" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,10"/>
-                        <DataGrid ItemsSource="{Binding FoodStats}" Height="220">
+                        <DataGrid ItemsSource="{Binding FoodStats}" Height="220" helpers:TabProgressiveRender.IsDataRegion="True">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Tên Món / Sản Phẩm" Binding="{Binding FoodName}" Width="180"/>
                                 <DataGridTextColumn Header="Loại" Binding="{Binding FoodType}" Width="140"/>
@@ -249,7 +250,7 @@
                 <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource CardPanel}">
                     <StackPanel>
                         <TextBlock Text="3. THỐNG KÊ HIỆU SUẤT THUÊ XE &amp; ĐỘ ƯA CHUỘNG" FontSize="14" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,10"/>
-                        <DataGrid ItemsSource="{Binding VehicleStats}" Height="220">
+                        <DataGrid ItemsSource="{Binding VehicleStats}" Height="220" helpers:TabProgressiveRender.IsDataRegion="True">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Biển Số" Binding="{Binding LicensePlate}" Width="110" FontWeight="SemiBold"/>
                                 <DataGridTextColumn Header="Tên Xe" Binding="{Binding VehicleName}" Width="160"/>
@@ -265,7 +266,7 @@
                 <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource CardPanel}">
                     <StackPanel>
                         <TextBlock Text="4. THỐNG KÊ SỰ KIỆN &amp; HƯ HẠI TRANG THIẾT BỊ" FontSize="14" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,10"/>
-                        <DataGrid ItemsSource="{Binding EventSpaceStats}" Height="220">
+                        <DataGrid ItemsSource="{Binding EventSpaceStats}" Height="220" helpers:TabProgressiveRender.IsDataRegion="True">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Khu Vực Sảnh/Phòng" Binding="{Binding SpaceName}" Width="180"/>
                                 <DataGridTextColumn Header="Số Lần Thuê" Binding="{Binding BookingCount}" Width="90" FontWeight="Bold"/>
@@ -280,7 +281,7 @@
                 <Border Grid.Row="2" Grid.Column="2" Style="{StaticResource CardPanel}">
                     <StackPanel>
                         <TextBlock Text="5. THỐNG KÊ ĐỐI TÁC GIẶT ỦI NGOÀI &amp; ĂN CHIA" FontSize="14" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,10"/>
-                        <DataGrid ItemsSource="{Binding LaundryPartnerStats}" Height="220">
+                        <DataGrid ItemsSource="{Binding LaundryPartnerStats}" Height="220" helpers:TabProgressiveRender.IsDataRegion="True">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Tên Đối Tác" Binding="{Binding PartnerName}" Width="170"/>
                                 <DataGridTextColumn Header="Số Đơn" Binding="{Binding OrderCount}" Width="70"/>

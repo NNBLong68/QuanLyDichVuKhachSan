@@ -363,6 +363,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public ICommand TrashFoodItemCommand { get; }
         public ICommand RestoreFoodItemCommand { get; }
         public ICommand PermanentDeleteFoodItemCommand { get; }
+        public event Action<string>? RequestSubTabTransition;
 
         // Thùng rác (Liên kết trực tiếp với DataService để lưu trữ bền vững)
         public ObservableCollection<FoodItem> TrashedItems => Data.TrashedFoodItems;
@@ -371,7 +372,16 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
         public InventoryViewModel()
         {
-            SetTabCommand = new RelayCommand(p => { if (p is string tab) ActiveTab = tab; });
+            SetTabCommand = new RelayCommand(p =>
+            {
+                if (p is string tab && _activeTab != tab)
+                {
+                    if (RequestSubTabTransition != null)
+                        RequestSubTabTransition.Invoke(tab);
+                    else
+                        ActiveTab = tab;
+                }
+            });
             AddDraftItemCommand = new RelayCommand(_ => AddDraftItem());
             RemoveDraftItemCommand = new RelayCommand(RemoveDraftItem);
             CommitReceiptCommand = new RelayCommand(_ => CommitReceipt());
@@ -465,9 +475,29 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             if (result != MessageBoxResult.Yes) return;
 
+            // Kiểm tra xem mặt hàng đã phát sinh giao dịch lịch sử (đơn ăn uống hoặc phiếu nhập kho) chưa
+            string checkSql = "SELECT (SELECT COUNT(1) FROM ChiTietDonHangMonAn WHERE MonAnId = @Id) + " +
+                              "(SELECT COUNT(1) FROM ChiTietPhieuNhapKho WHERE MonAnId = @Id);";
+            var countObj = await DatabaseService.Instance.ExecuteScalarAsync(checkSql, new Microsoft.Data.SqlClient.SqlParameter("@Id", item.Id));
+            int refCount = countObj != null && countObj != DBNull.Value ? Convert.ToInt32(countObj) : 0;
+
+            if (refCount > 0)
+            {
+                // Có liên kết lịch sử kế toán: Cập nhật trạng thái 'Đã xóa' thay vì DELETE cứng để không vi phạm FK
+                await DatabaseService.Instance.ExecuteNonQueryAsync(
+                    "UPDATE MonAn SET TrangThai = N'Đã xóa' WHERE Id = @Id",
+                    new Microsoft.Data.SqlClient.SqlParameter("@Id", item.Id)
+                );
+                TrashedItems.Remove(item);
+                NotifyTrashChanged();
+                RefreshAll();
+                MessageBox.Show($"Mặt hàng [{item.ItemCode}] {item.Name} đã từng phát sinh giao dịch/nhập kho trong lịch sử nên hệ thống đã lưu trữ và ẩn vĩnh viễn khỏi danh mục (bảo toàn chứng từ kế toán)!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
             TrashedItems.Remove(item);
 
-            // Xóa vĩnh viễn trong DB
+            // Chưa có bất kỳ giao dịch nào: Cho phép xóa cứng
             await DatabaseService.Instance.ExecuteNonQueryAsync(
                 "DELETE FROM MonAn WHERE Id = @Id",
                 new Microsoft.Data.SqlClient.SqlParameter("@Id", item.Id)
@@ -486,13 +516,14 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
         public void RefreshAll()
         {
-            // Auto-clean: Xóa vĩnh viễn các mặt hàng trong thùng rác quá 3 tháng
+            // Auto-clean: Xóa vĩnh viễn các mặt hàng trong thùng rác quá 3 tháng (an toàn khóa ngoại)
             var expiredTrash = TrashedItems.Where(x => x.TrashedDate.HasValue && x.TrashedDate.Value.AddMonths(3) < DateTime.Now).ToList();
             foreach (var expired in expiredTrash)
             {
                 TrashedItems.Remove(expired);
                 _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                    "DELETE FROM MonAn WHERE Id = @Id",
+                    "IF NOT EXISTS (SELECT 1 FROM ChiTietDonHangMonAn WHERE MonAnId = @Id) AND NOT EXISTS (SELECT 1 FROM ChiTietPhieuNhapKho WHERE MonAnId = @Id) " +
+                    "DELETE FROM MonAn WHERE Id = @Id; ELSE UPDATE MonAn SET TrangThai = N'Đã xóa' WHERE Id = @Id;",
                     new Microsoft.Data.SqlClient.SqlParameter("@Id", expired.Id)
                 );
             }

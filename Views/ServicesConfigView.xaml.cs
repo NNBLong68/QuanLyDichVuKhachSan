@@ -25,18 +25,32 @@ namespace QuanLyDichVuKhachSan.Views
 
         public void LoadUsers()
         {
-            var dbUsers = DatabaseService.Instance.LoadUsersFromDb();
-            if (dbUsers != null && dbUsers.Count > 0)
+            if (DgUsers.ItemsSource == null)
             {
-                DataService.Instance.Users.Clear();
-                foreach (var u in dbUsers)
-                {
-                    DataService.Instance.Users.Add(u);
-                }
+                DgUsers.ItemsSource = DataService.Instance.Users;
             }
 
-            DgUsers.ItemsSource = null;
-            DgUsers.ItemsSource = DataService.Instance.Users;
+            _ = System.Threading.Tasks.Task.Run(() =>
+            {
+                var dbUsers = DatabaseService.Instance.LoadUsersFromDb();
+                if (dbUsers != null && dbUsers.Count > 0)
+                {
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
+                    {
+                        bool changed = DataService.Instance.Users.Count != dbUsers.Count ||
+                                       !DataService.Instance.Users.Select(x => (x.Id, x.Username, x.Password, x.FullName, x.Role, x.IsActive))
+                                           .SequenceEqual(dbUsers.Select(x => (x.Id, x.Username, x.Password, x.FullName, x.Role, x.IsActive)));
+                        if (changed)
+                        {
+                            DataService.Instance.Users.Clear();
+                            foreach (var u in dbUsers)
+                            {
+                                DataService.Instance.Users.Add(u);
+                            }
+                        }
+                    }));
+                }
+            });
         }
 
         private void DgUsers_SelectionChanged(object sender, SelectionChangedEventArgs e)

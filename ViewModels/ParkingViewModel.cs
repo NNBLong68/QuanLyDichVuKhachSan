@@ -273,6 +273,9 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 return;
             }
 
+            bool isFreeResident = ChargeType == ParkingChargeType.ResidentFree || !string.IsNullOrWhiteSpace(RoomNumber);
+            bool isPayImmediateByTurn = !isFreeResident && ChargeType == ParkingChargeType.ByTurn;
+
             var record = new ParkingRecord
             {
                 LicensePlate = LicensePlate.Trim(),
@@ -281,27 +284,32 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 PhoneNumber = PhoneNumber?.Trim() ?? "",
                 RoomNumber = RoomNumber?.Trim() ?? "",
                 CheckInTime = DateTime.Now,
-                ChargeType = ChargeType,
-                ParkingFee = ParkingFee,
-                IsPaid = ChargeType == ParkingChargeType.ResidentFree || ChargeType == ParkingChargeType.ByTurn,
+                ChargeType = isFreeResident ? ParkingChargeType.ResidentFree : ChargeType,
+                ParkingFee = isFreeResident ? 0 : ParkingFee,
+                IsPaid = isFreeResident || isPayImmediateByTurn,
+                DaThanhToan = isFreeResident || isPayImmediateByTurn,
+                NguoiThanhToanId = (isFreeResident || isPayImmediateByTurn) ? Data.GetCurrentDutyStaffId() : null,
+                ThoiGianThanhToan = (isFreeResident || isPayImmediateByTurn) ? DateTime.Now : null,
                 RepairNote = RepairNote?.Trim() ?? "",
                 RecordedBy = Auth.IsAdmin ? "Chủ khách sạn" : Data.GetCurrentDutyStaffName(DateTime.Now)
             };
 
-            // Chỉ xuất bill thu tiền nếu có phí phát sinh (> 0đ)
-            if (record.ParkingFee > 0)
+            if (isFreeResident)
+            {
+                MessageBox.Show($"Đã ghi nhận xe phòng [{record.RoomNumber}] (BS: {record.LicensePlate}) vào bãi đỗ xe thành công (Miễn phí)!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else if (isPayImmediateByTurn && record.ParkingFee > 0)
             {
                 var win = new Views.InvoiceBillWindow(record);
                 bool? res = win.ShowDialog();
                 if (res != true || !win.IsConfirmed)
                 {
-                    // Hủy bỏ hoặc bấm X: Không lưu xuống CSDL
                     return;
                 }
             }
             else
             {
-                MessageBox.Show($"Đã ghi nhận xe phòng [{record.RoomNumber}] (BS: {record.LicensePlate}) vào bãi đỗ xe thành công (Miễn phí)!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show($"Đã ghi nhận vé xe [{record.LicensePlate}] vào bãi ({record.ChargeTypeDisplay}). Phí đỗ xe sẽ được tính và quyết toán khi xe rời bãi!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
             Data.AddParkingRecord(record);
@@ -325,14 +333,45 @@ namespace QuanLyDichVuKhachSan.ViewModels
             DateTime outTime = ActualOutTime;
             decimal fee = CalculatedAmount;
 
+            // Nếu vé xe đã miễn phí (khách phòng) hoặc đã thu tiền theo lượt ngay lúc vào -> chỉ xác nhận cho xe ra bãi
+            if (record.DaThanhToan || record.ChargeType == ParkingChargeType.ResidentFree)
+            {
+                record.CheckOutTime = outTime;
+                int staffId = record.NguoiThanhToanId ?? Data.GetCurrentDutyStaffId();
+                record.NguoiThanhToanId = staffId;
+                record.ThoiGianThanhToan ??= DateTime.Now;
+                record.DaThanhToan = true;
+                record.IsPaid = true;
+
+                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
+                    "UPDATE BaiDoXe SET ThoiGianRa = @Out, DaThanhToan = 1, NguoiThanhToanId = @NguoiTT, ThoiGianThanhToan = @TgTT WHERE Id = @Id OR MaVe = @Ma",
+                    new Microsoft.Data.SqlClient.SqlParameter("@Out", record.CheckOutTime),
+                    new Microsoft.Data.SqlClient.SqlParameter("@NguoiTT", record.NguoiThanhToanId),
+                    new Microsoft.Data.SqlClient.SqlParameter("@TgTT", record.ThoiGianThanhToan),
+                    new Microsoft.Data.SqlClient.SqlParameter("@Id", record.Id),
+                    new Microsoft.Data.SqlClient.SqlParameter("@Ma", record.TicketCode)
+                );
+
+                MessageBox.Show($"Đã xác nhận xe [{record.LicensePlate}] rời bãi thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                SelectedRecord = null;
+                return;
+            }
+
+            decimal oldFee = record.ParkingFee;
+            record.ParkingFee = fee;
+            record.CheckOutTime = outTime;
+
             var win = new Views.InvoiceBillWindow(record);
             bool? res = win.ShowDialog();
             if (res == true && win.IsConfirmed)
             {
+                int dutyStaffId = Data.GetCurrentDutyStaffId();
                 record.CheckOutTime = outTime;
                 record.ParkingFee = fee;
                 record.DaThanhToan = true;
-                record.NguoiThanhToanId = Auth.CurrentUser?.Id ?? 1;
+                record.IsPaid = true;
+                record.NguoiThanhToanId = dutyStaffId;
+                record.PaidByStaffName = Data.GetCurrentDutyStaffName();
                 record.ThoiGianThanhToan = DateTime.Now;
 
                 // Đồng bộ xuống CSDL SQL Server (Table BaiDoXe)
@@ -347,6 +386,11 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 );
 
                 SelectedRecord = null;
+            }
+            else
+            {
+                record.ParkingFee = oldFee;
+                record.CheckOutTime = null;
             }
         }
     }

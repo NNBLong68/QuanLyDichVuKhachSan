@@ -119,10 +119,10 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             BuildPieChartSlices();
 
-            FoodStats.ReplaceRange(Data.GetFoodStats());
-            VehicleStats.ReplaceRange(Data.GetVehicleStats());
-            EventSpaceStats.ReplaceRange(Data.GetEventSpaceStats());
-            LaundryPartnerStats.ReplaceRange(Data.GetLaundryPartnerStats());
+            FoodStats.ReplaceRange(isAllTime ? Data.GetFoodStats() : Data.GetFoodStats(startDate, endDate));
+            VehicleStats.ReplaceRange(isAllTime ? Data.GetVehicleStats() : Data.GetVehicleStats(startDate, endDate));
+            EventSpaceStats.ReplaceRange(isAllTime ? Data.GetEventSpaceStats() : Data.GetEventSpaceStats(startDate, endDate));
+            LaundryPartnerStats.ReplaceRange(isAllTime ? Data.GetLaundryPartnerStats() : Data.GetLaundryPartnerStats(startDate, endDate));
 
             var salaryList = new List<StaffSalaryReportItem>();
             foreach (var staff in Data.StaffList)

@@ -30,6 +30,13 @@ public partial class App : Application
             new FrameworkPropertyMetadata(
                 System.Windows.Markup.XmlLanguage.GetLanguage("vi-VN")));
 
+        // Tối ưu hóa đồ họa phần cứng chống nhòe và sắc nét tối đa
+        try
+        {
+            System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.Default;
+        }
+        catch { }
+
         // Tự động gán Icon nhận diện khách sạn 5 sao cao cấp cho TẤT CẢ các cửa sổ khi mở lên
         try
         {
