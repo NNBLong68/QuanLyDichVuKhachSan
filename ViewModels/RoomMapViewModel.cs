@@ -284,17 +284,32 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     var checkInDialog = new Views.CheckInDialogWindow(room);
                     if (checkInDialog.ShowDialog() == true && checkInDialog.IsConfirmed)
                     {
-                        // 1. Cập nhật vào danh sách Khách hàng trong RAM Cache
-                        int newCustId = Data.Customers.Count > 0 ? Data.Customers.Max(x => x.Id) + 1 : 1;
-                        Data.AddCustomerToCache(new Customer
+                        // 1. Cập nhật vào danh sách Khách hàng trong RAM Cache (Tránh nhân bản khách cũ)
+                        var existingCust = Data.Customers.FirstOrDefault(c => 
+                            (!string.IsNullOrWhiteSpace(c.PhoneNumber) && c.PhoneNumber == room.PhoneNumber) ||
+                            (!string.IsNullOrWhiteSpace(c.IdentityCard) && c.IdentityCard == room.IdentityCard));
+
+                        if (existingCust != null)
                         {
-                            Id = newCustId,
-                            FullName = room.CustomerName,
-                            PhoneNumber = room.PhoneNumber,
-                            IdentityCard = room.IdentityCard,
-                            RoomNumber = room.RoomNumber,
-                            Note = room.Note
-                        });
+                            existingCust.FullName = room.CustomerName;
+                            existingCust.RoomNumber = room.RoomNumber;
+                            if (!string.IsNullOrWhiteSpace(room.IdentityCard)) existingCust.IdentityCard = room.IdentityCard;
+                            if (!string.IsNullOrWhiteSpace(room.PhoneNumber)) existingCust.PhoneNumber = room.PhoneNumber;
+                            if (!string.IsNullOrWhiteSpace(room.Note)) existingCust.Note = room.Note;
+                        }
+                        else
+                        {
+                            int newCustId = Data.Customers.Count > 0 ? Data.Customers.Max(x => x.Id) + 1 : 1;
+                            Data.AddCustomerToCache(new Customer
+                            {
+                                Id = newCustId,
+                                FullName = room.CustomerName,
+                                PhoneNumber = room.PhoneNumber,
+                                IdentityCard = room.IdentityCard,
+                                RoomNumber = room.RoomNumber,
+                                Note = room.Note
+                            });
+                        }
 
                         SelectedRoom = room;
                         ApplyFilter();
@@ -360,6 +375,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     room.PhoneNumber = "";
                     room.IdentityCard = "";
                     room.CheckInDate = null;
+                    room.ExpectedCheckOutDate = null;
                     room.Note = "Khách đã trả phòng & quyết toán xong - Chờ dọn phòng";
                     SelectedRoom = room;
                     ApplyFilter();
@@ -368,7 +384,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
                     // Đồng bộ ngầm trạng thái xuống CSDL SQL Server (Non-blocking)
                     _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                        "UPDATE PhongKhachSan SET TrangThai = 'Cleaning', TenKhach = '', SoDienThoai = '', CCCD = '', GhiChu = @Note WHERE SoPhong = @Phong",
+                        "UPDATE PhongKhachSan SET TrangThai = N'Đang dọn', TenKhach = NULL, SoDienThoai = NULL, CCCD = NULL, NgayNhanPhong = NULL, NgayTraPhong = NULL, GhiChu = @Note WHERE SoPhong = @Phong",
                         new Microsoft.Data.SqlClient.SqlParameter("@Phong", room.RoomNumber),
                         new Microsoft.Data.SqlClient.SqlParameter("@Note", room.Note)
                     );
@@ -386,7 +402,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     NotifyAllStateChanges();
 
                     _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                        "UPDATE PhongKhachSan SET TrangThai = 'Cleaning', GhiChu = @Note WHERE SoPhong = @Phong",
+                        "UPDATE PhongKhachSan SET TrangThai = N'Đang dọn', GhiChu = @Note WHERE SoPhong = @Phong",
                         new Microsoft.Data.SqlClient.SqlParameter("@Phong", room.RoomNumber),
                         new Microsoft.Data.SqlClient.SqlParameter("@Note", room.Note)
                     );
@@ -402,6 +418,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     room.PhoneNumber = "";
                     room.IdentityCard = "";
                     room.CheckInDate = null;
+                    room.ExpectedCheckOutDate = null;
                     room.Note = "Phòng đã dọn dẹp sạch sẽ, sẵn sàng đón khách";
                     SelectedRoom = room;
                     ApplyFilter();
@@ -409,7 +426,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     NotifyAllStateChanges();
 
                     _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                        "UPDATE PhongKhachSan SET TrangThai = 'Available', TenKhach = '', SoDienThoai = '', CCCD = '', GhiChu = @Note WHERE SoPhong = @Phong",
+                        "UPDATE PhongKhachSan SET TrangThai = N'Trống', TenKhach = NULL, SoDienThoai = NULL, CCCD = NULL, NgayNhanPhong = NULL, NgayTraPhong = NULL, GhiChu = @Note WHERE SoPhong = @Phong",
                         new Microsoft.Data.SqlClient.SqlParameter("@Phong", room.RoomNumber),
                         new Microsoft.Data.SqlClient.SqlParameter("@Note", room.Note)
                     );
@@ -427,7 +444,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     NotifyAllStateChanges();
 
                     _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                        "UPDATE PhongKhachSan SET TrangThai = 'Maintenance', GhiChu = @Note WHERE SoPhong = @Phong",
+                        "UPDATE PhongKhachSan SET TrangThai = N'Bảo trì', GhiChu = @Note WHERE SoPhong = @Phong",
                         new Microsoft.Data.SqlClient.SqlParameter("@Phong", room.RoomNumber),
                         new Microsoft.Data.SqlClient.SqlParameter("@Note", room.Note)
                     );
@@ -446,7 +463,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     NotifyAllStateChanges();
 
                     _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                        "UPDATE PhongKhachSan SET TrangThai = 'Available', GhiChu = @Note WHERE SoPhong = @Phong",
+                        "UPDATE PhongKhachSan SET TrangThai = N'Trống', GhiChu = @Note WHERE SoPhong = @Phong",
                         new Microsoft.Data.SqlClient.SqlParameter("@Phong", room.RoomNumber),
                         new Microsoft.Data.SqlClient.SqlParameter("@Note", room.Note)
                     );
@@ -488,9 +505,6 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
         public void ApplyFilter()
         {
-            FilteredRooms.Clear();
-            FloorGroups.Clear();
-
             // Đảm bảo mỗi phòng là duy nhất theo mã phòng (RoomNumber)
             IEnumerable<HotelRoom> query = AllRooms.GroupBy(x => x.RoomNumber).Select(g => g.First());
 
@@ -506,13 +520,13 @@ namespace QuanLyDichVuKhachSan.ViewModels
             var filteredList = query.ToList();
             FilteredRooms.ReplaceRange(filteredList);
 
-            // Nhóm theo 5 tầng (Tầng 1 -> Tầng 5)
+            // Cập nhật thông tin xe gửi bãi trên từng phòng và gom nhóm theo 5 tầng
+            var targetFloors = new List<(int Floor, List<HotelRoom> Rooms)>();
             for (int f = 1; f <= 5; f++)
             {
                 var floorRooms = filteredList.Where(x => x.Floor == f).OrderBy(x => x.RoomNumber).ToList();
                 if (floorRooms.Count > 0)
                 {
-                    var group = new FloorGroup { FloorNumber = f };
                     foreach (var r in floorRooms)
                     {
                         var parkedList = Data.ParkingRecords.Where(p => 
@@ -521,6 +535,35 @@ namespace QuanLyDichVuKhachSan.ViewModels
                         r.ParkedVehicleInfo = parkedList.Count > 0
                             ? string.Join("; ", parkedList.Select(p => $"{p.VehicleType} (BS: {p.LicensePlate})"))
                             : "";
+                    }
+                    targetFloors.Add((f, floorRooms));
+                }
+            }
+
+            // Kiểm tra thông minh: Nếu danh sách tầng và các phòng trong từng tầng không thay đổi,
+            // giữ nguyên FloorGroups để tránh hủy và tạo lại 20 thẻ phòng trên giao diện!
+            bool isSameStructure = FloorGroups.Count == targetFloors.Count;
+            if (isSameStructure)
+            {
+                for (int i = 0; i < targetFloors.Count; i++)
+                {
+                    if (FloorGroups[i].FloorNumber != targetFloors[i].Floor ||
+                        !FloorGroups[i].Rooms.SequenceEqual(targetFloors[i].Rooms))
+                    {
+                        isSameStructure = false;
+                        break;
+                    }
+                }
+            }
+
+            if (!isSameStructure)
+            {
+                FloorGroups.Clear();
+                foreach (var tf in targetFloors)
+                {
+                    var group = new FloorGroup { FloorNumber = tf.Floor };
+                    foreach (var r in tf.Rooms)
+                    {
                         group.Rooms.Add(r);
                     }
                     FloorGroups.Add(group);
@@ -536,7 +579,6 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
         public void LoadServicesForSelectedRoom()
         {
-            CurrentRoomServices.Clear();
             if (SelectedRoom != null)
             {
                 var parkedList = Data.ParkingRecords.Where(p => 

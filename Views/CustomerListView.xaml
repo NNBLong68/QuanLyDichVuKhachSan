@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:helpers="clr-namespace:QuanLyDichVuKhachSan.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="850" d:DesignWidth="1150"
              UseLayoutRounding="True"
@@ -147,7 +148,7 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="📋 BẢNG DANH BẠ HỒ SƠ KHÁCH HÀNG" FontSize="15" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,12"/>
-                <DataGrid Grid.Row="1" ItemsSource="{Binding FilteredCustomers}" IsReadOnly="True" AutoGenerateColumns="False">
+                <DataGrid Grid.Row="1" ItemsSource="{Binding FilteredCustomers}" IsReadOnly="True" AutoGenerateColumns="False" helpers:TabProgressiveRender.IsDataRegion="True">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Họ Và Tên" Binding="{Binding FullName}" Width="180" FontWeight="Bold"/>
                         <DataGridTextColumn Header="Phân Loại" Binding="{Binding CustomerTypeDisplay}" Width="130" FontWeight="SemiBold"/>

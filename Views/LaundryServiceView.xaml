@@ -58,7 +58,7 @@
                                 </Button.Resources>
                             </Button>
                         </Grid>
-                        <ItemsControl ItemsSource="{Binding Data.LaundryPartners}">
+                        <ItemsControl ItemsSource="{Binding Data.LaundryPartners}" helpers:TabProgressiveRender.IsDataRegion="True">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,8"
@@ -184,7 +184,7 @@
                             </StackPanel>
                         </Border>
 
-                        <DataGrid x:Name="GridLaundryOrders" Grid.Row="2" 
+                        <DataGrid x:Name="GridLaundryOrders" Grid.Row="2" helpers:TabProgressiveRender.IsDataRegion="True"
                                   ItemsSource="{Binding FilteredLaundryOrders}"
                                   SelectedItem="{Binding SelectedOrderToReturn, Mode=TwoWay}"
                                   SelectionMode="Extended"

@@ -768,6 +768,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             ApplyVehicleFilter();
             ApplyRentalFilter();
+            Data.Vehicles.CollectionChanged += (s, e) => ApplyVehicleFilter();
             Data.VehicleRentals.CollectionChanged += (s, e) => ApplyRentalFilter();
 
             SelectedVehicle = AvailableVehiclesForRent.FirstOrDefault();
@@ -975,6 +976,26 @@ namespace QuanLyDichVuKhachSan.ViewModels
             string code = $"TX-{DateTime.Now:yyyyMMdd}-{Data.VehicleRentals.Count + 1:D2}";
             TryGetRentalDateTimes(out var start, out var end);
 
+            // Kiểm tra trùng lịch đặt xe kèm thời gian kiểm tra vệ sinh (buffer 30 phút theo Trigger CSDL)
+            const int vehicleBufferMinutes = 30;
+            var conflictingRental = Data.VehicleRentals.FirstOrDefault(r =>
+                r.VehicleId == SelectedVehicle.Id &&
+                r.OrderStatus != null && !r.OrderStatus.StartsWith("Đã hủy") &&
+                (r.Status == null || !r.Status.StartsWith("Đã hủy")) &&
+                r.Status != "Hoàn tất" && r.OrderStatus != "Hoàn tất" && !r.DaTraXe &&
+                start < (r.ActualReturnDate ?? r.ExpectedReturnDate).AddMinutes(vehicleBufferMinutes) &&
+                r.RentalDate < end.AddMinutes(vehicleBufferMinutes));
+
+            if (conflictingRental != null)
+            {
+                MessageBox.Show($"Xe [{SelectedVehicle.Name} - {SelectedVehicle.LicensePlate}] đã có đơn thuê trùng hoặc chưa đủ 30 phút kiểm tra/vệ sinh xe!\n\n" +
+                    $"- Đơn thuê hiện tại: {conflictingRental.RentalCode} ({conflictingRental.RentalDate:HH:mm dd/MM} - {conflictingRental.ExpectedReturnDate:HH:mm dd/MM})\n" +
+                    $"- Khung giờ yêu cầu: {start:HH:mm dd/MM} - {end:HH:mm dd/MM}\n\n" +
+                    $"Vui lòng chọn khung giờ khác cách tối thiểu 30 phút hoặc chọn một xe khác.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            string orderStatus = start > DateTime.Now.AddMinutes(15) ? "Đã đặt" : "Đang thuê";
             var rental = new VehicleRental
             {
                 RentalCode = code,
@@ -990,11 +1011,13 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 DepositAmount = actualCollect,
                 RentalFee = CalculatedFee,
                 TotalPayment = CalculatedFee,
+                InitialPaymentType = IsFullPayment ? "Thanh toán toàn bộ" : "Đặt cọc trước",
+                OrderStatus = orderStatus,
                 PaymentMethod = method,
                 PaymentStatus = isRoomCharge ? "Ghi nợ vào phòng" : (IsFullPayment ? "Đã thanh toán" : "Đã đặt cọc"),
                 DaThanhToan = !isRoomCharge && IsFullPayment,
                 ReceptionNote = RentalReceptionNote.Trim(),
-                Status = "Đang thuê",
+                Status = orderStatus,
                 RecordedBy = staff,
                 PaidByStaffName = (!isRoomCharge && IsFullPayment) ? staff : "",
                 ThoiGianThanhToan = (!isRoomCharge && IsFullPayment) ? DateTime.Now : null
@@ -1006,7 +1029,10 @@ namespace QuanLyDichVuKhachSan.ViewModels
             if (res == true && win.IsConfirmed)
             {
                 Data.AddVehicleRental(rental);
-                SelectedVehicle.Status = VehicleStatus.Rented;
+                if (orderStatus == "Đang thuê")
+                {
+                    SelectedVehicle.Status = VehicleStatus.Rented;
+                }
                 ApplyVehicleFilter();
 
                 RentalCustomerName = "";
@@ -1045,10 +1071,11 @@ namespace QuanLyDichVuKhachSan.ViewModels
             SelectedRentalToReturn.RentalFee += extraFee;
             SelectedRentalToReturn.TotalPayment += extraFee;
             SelectedRentalToReturn.Status = "Đang thuê";
+            SelectedRentalToReturn.OrderStatus = "Đang thuê";
 
             // Đồng bộ xuống CSDL SQL Server (Table DonThueXe)
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "UPDATE DonThueXe SET NgayTraDuKien = @NgayTra, TienThue = @Tien, TongTienThanhToan = @Tong, TrangThai = N'Đang thuê' WHERE MaDon = @Ma",
+                "UPDATE DonThueXe SET NgayTraDuKien = @NgayTra, TienThue = @Tien, TongTienThanhToan = @Tong, TrangThaiDon = N'Đang thuê' WHERE MaDon = @Ma",
                 new Microsoft.Data.SqlClient.SqlParameter("@NgayTra", SelectedRentalToReturn.ExpectedReturnDate),
                 new Microsoft.Data.SqlClient.SqlParameter("@Tien", SelectedRentalToReturn.RentalFee),
                 new Microsoft.Data.SqlClient.SqlParameter("@Tong", SelectedRentalToReturn.TotalPayment),

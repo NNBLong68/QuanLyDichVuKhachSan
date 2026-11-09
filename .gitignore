@@ -1,8 +1,20 @@
-# Bỏ qua thư mục biên dịch
+# =====================================================================
+# 1. BỎ QUA CÁC THƯ MỤC RÁC SINH RA KHI DEBUG / BUILD
+# =====================================================================
 bin/
 obj/
-
-# Bỏ qua file cấu hình cá nhân của Visual Studio
 .vs/
 *.user
 *.suo
+*.pdb
+
+# =====================================================================
+# 2. BẢO MẬT: KHÔNG ĐẨY FILE CHỨA CHUỖI KẾT NỐI DATABASE & PHIÊN ĐĂNG NHẬP
+# =====================================================================
+appsettings.json
+appsettings.*.json
+App.config
+*.dll.config
+**/appsettings.json
+**/App.config
+**/remember.dat

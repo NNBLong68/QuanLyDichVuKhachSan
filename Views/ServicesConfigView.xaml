@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:helpers="clr-namespace:QuanLyDichVuKhachSan.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="800" d:DesignWidth="1200"
              Loaded="UserControl_Loaded"
@@ -38,7 +39,7 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Text="📋 DANH SÁCH DỊCH VỤ CỦA KHÁCH SẠN" FontSize="15" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,12"/>
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" helpers:TabProgressiveRender.IsDataRegion="True">
                         <ItemsControl ItemsSource="{Binding Data.ServicesConfig}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -88,6 +89,7 @@
                     <!-- Danh Sách Tài Khoản DataGrid -->
                     <Border Grid.Row="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="8" Margin="0,0,0,12">
                         <DataGrid x:Name="DgUsers"
+                                  helpers:TabProgressiveRender.IsDataRegion="True"
                                   AutoGenerateColumns="False" 
                                   IsReadOnly="True" 
                                   CanUserAddRows="False"

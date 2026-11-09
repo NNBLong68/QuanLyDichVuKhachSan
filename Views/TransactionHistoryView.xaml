@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:viewmodels="clr-namespace:QuanLyDichVuKhachSan.ViewModels"
+             xmlns:helpers="clr-namespace:QuanLyDichVuKhachSan.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="850" d:DesignWidth="1200"
              UseLayoutRounding="True"
@@ -11,10 +11,6 @@
              TextOptions.TextFormattingMode="Display"
              TextOptions.TextRenderingMode="ClearType"
              TextOptions.TextHintingMode="Fixed">
-
-    <UserControl.DataContext>
-        <viewmodels:TransactionHistoryViewModel/>
-    </UserControl.DataContext>
 
     <Grid Margin="20">
         <Grid.RowDefinitions>
@@ -121,7 +117,8 @@
 
         <!-- 4. Transactions DataGrid -->
         <Border Grid.Row="3" Style="{StaticResource CardPanel}" Padding="0">
-            <DataGrid ItemsSource="{Binding FilteredTransactions}" 
+            <DataGrid helpers:TabProgressiveRender.IsDataRegion="True"
+                      ItemsSource="{Binding FilteredTransactions}" 
                       SelectedItem="{Binding SelectedTransaction}"
                       AutoGenerateColumns="False" 
                       IsReadOnly="True" 

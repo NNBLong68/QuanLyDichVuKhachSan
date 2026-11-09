@@ -74,7 +74,7 @@
                         </TextBlock>
                     </Grid>
 
-                    <DataGrid Grid.Row="2" ItemsSource="{Binding FilteredParkingRecords}" SelectedItem="{Binding SelectedRecord}" AutoGenerateColumns="False" IsReadOnly="True">
+                    <DataGrid Grid.Row="2" helpers:TabProgressiveRender.IsDataRegion="True" ItemsSource="{Binding FilteredParkingRecords}" SelectedItem="{Binding SelectedRecord}" AutoGenerateColumns="False" IsReadOnly="True">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Mã Vé" Binding="{Binding TicketCode}" Width="90" FontWeight="SemiBold"/>
                             <DataGridTextColumn Header="Biển Số" Binding="{Binding LicensePlate}" Width="110" FontWeight="Bold" Foreground="#0284C7"/>

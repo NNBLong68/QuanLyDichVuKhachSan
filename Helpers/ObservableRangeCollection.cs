@@ -21,19 +21,47 @@ namespace QuanLyDichVuKhachSan.Helpers
 
         /// <summary>
         /// Thay thế toàn bộ nội dung hiện tại bằng tập hợp mới chỉ kích hoạt 1 lần duy nhất sự kiện Reset.
+        /// Tối ưu hóa Smart Diffing: Nếu danh sách mới giống hệt danh sách đang hiển thị (cùng phần tử và thứ tự),
+        /// bỏ qua lệnh Reset để ngăn WPF hủy và vẽ lại hàng loạt dòng dữ liệu trên giao diện.
         /// </summary>
         public void ReplaceRange(IEnumerable<T>? collection)
         {
             CheckReentrancy();
 
-            Items.Clear();
-
-            if (collection != null)
+            if (collection == null)
             {
-                foreach (var item in collection)
+                if (Items.Count == 0) return;
+                Items.Clear();
+                OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
+                OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+                OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+                return;
+            }
+
+            var newList = collection as IList<T> ?? new List<T>(collection);
+
+            if (Items.Count == newList.Count)
+            {
+                bool isIdentical = true;
+                var comparer = EqualityComparer<T>.Default;
+                for (int i = 0; i < newList.Count; i++)
                 {
-                    Items.Add(item);
+                    if (!comparer.Equals(Items[i], newList[i]))
+                    {
+                        isIdentical = false;
+                        break;
+                    }
                 }
+                if (isIdentical)
+                {
+                    return;
+                }
+            }
+
+            Items.Clear();
+            for (int i = 0; i < newList.Count; i++)
+            {
+                Items.Add(newList[i]);
             }
 
             OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));

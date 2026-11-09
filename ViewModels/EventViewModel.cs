@@ -1097,15 +1097,21 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 return;
             }
 
-            // Kiểm tra trùng lịch đặt
-            bool isConflict = Data.EventBookings.Any(b => 
+            // Kiểm tra trùng lịch đặt kèm thời gian dọn dẹp (buffer 60 phút theo Trigger CSDL)
+            const int cleaningBufferMinutes = 60;
+            var conflictingBooking = Data.EventBookings.FirstOrDefault(b => 
                 b.SpaceId == SelectedSpace.Id &&
+                b.OrderStatus != null && !b.OrderStatus.StartsWith("Đã hủy") &&
                 b.PaymentStatus != "Đã hủy" &&
-                b.StartTime < end && b.EndTime > start);
+                start < b.EndTime.AddMinutes(cleaningBufferMinutes) &&
+                b.StartTime < end.AddMinutes(cleaningBufferMinutes));
 
-            if (isConflict)
+            if (conflictingBooking != null)
             {
-                MessageBox.Show($"Khu vực [{SelectedSpace.Name}] đã có đơn đặt trùng vào khung giờ {start:HH:mm dd/MM} - {end:HH:mm dd/MM}! Vui lòng chọn khung giờ khác.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show($"Khu vực [{SelectedSpace.Name}] đã có đơn đặt trùng hoặc chưa đủ 60 phút dọn dẹp vệ sinh sảnh!\n\n" +
+                    $"- Đơn đặt hiện tại: {conflictingBooking.BookingCode} ({conflictingBooking.StartTime:HH:mm dd/MM} - {conflictingBooking.EndTime:HH:mm dd/MM})\n" +
+                    $"- Khung giờ yêu cầu: {start:HH:mm dd/MM} - {end:HH:mm dd/MM}\n\n" +
+                    $"Vui lòng chọn khung giờ khác cách tối thiểu 60 phút để nhân viên dọn dẹp và chuẩn bị sảnh.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 

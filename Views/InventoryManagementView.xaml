@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:helpers="clr-namespace:QuanLyDichVuKhachSan.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="850" d:DesignWidth="1250"
              UseLayoutRounding="True"
@@ -87,13 +88,15 @@
             <!-- ====================================================================== -->
             <!-- TAB 1: LẬP PHIẾU NHẬP KHO                                              -->
             <!-- ====================================================================== -->
-            <Grid>
+            <Grid x:Name="SubTabReceipt">
                 <Grid.Style>
                     <Style TargetType="Grid">
-                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Setter Property="Visibility" Value="Hidden"/>
+                        <Setter Property="IsHitTestVisible" Value="False"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ActiveTab}" Value="Receipt">
                                 <Setter Property="Visibility" Value="Visible"/>
+                                <Setter Property="IsHitTestVisible" Value="True"/>
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -106,7 +109,7 @@
 
                 <!-- CỘT TRÁI: FORM NHẬP HÀNG (ĐÃ BỎ TIÊU ĐỀ SOẠN DÒNG HÀNG NHẬP, CÓ NÚT CÂY BÚT KHÓA ĐVT & HỆ SỐ) -->
                 <Border Grid.Column="0" Style="{StaticResource CardPanel}">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:TabProgressiveRender.IsDataRegion="True">
                         <StackPanel>
                             <!-- Chọn Mặt Hàng -->
                             <TextBlock Text="Chọn Mặt Hàng Nhập:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
@@ -231,7 +234,7 @@
                         </Grid>
 
                         <!-- DataGrid Danh Sách Dòng Hàng Đang Lập -->
-                        <Border Grid.Row="1" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6">
+                        <Border Grid.Row="1" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" helpers:TabProgressiveRender.IsDataRegion="True">
                             <DataGrid ItemsSource="{Binding DraftReceiptItems}" AutoGenerateColumns="False" IsReadOnly="True">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Mặt Hàng" Binding="{Binding FoodItemName}" Width="160" FontWeight="Bold"/>
@@ -274,13 +277,15 @@
             <!-- ====================================================================== -->
             <!-- TAB 2: DANH MỤC MẶT HÀNG (ĐÃ BỎ QUY ĐỊNH KHO)                          -->
             <!-- ====================================================================== -->
-            <Grid>
+            <Grid x:Name="SubTabCatalog">
                 <Grid.Style>
                     <Style TargetType="Grid">
-                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Setter Property="Visibility" Value="Hidden"/>
+                        <Setter Property="IsHitTestVisible" Value="False"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ActiveTab}" Value="Catalog">
                                 <Setter Property="Visibility" Value="Visible"/>
+                                <Setter Property="IsHitTestVisible" Value="True"/>
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -308,6 +313,7 @@
                         </Grid>
 
                         <DataGrid x:Name="CatalogDataGrid" Grid.Row="1" ItemsSource="{Binding FilteredCatalogItems}" AutoGenerateColumns="False" IsReadOnly="True"
+                                  helpers:TabProgressiveRender.IsDataRegion="True"
                                   SelectionMode="Single" MouseDoubleClick="CatalogDataGrid_MouseDoubleClick">
                             <DataGrid.ContextMenu>
                                 <ContextMenu>
@@ -532,13 +538,15 @@
             <!-- ====================================================================== -->
             <!-- TAB 3: LỊCH SỬ NHẬP KHO (ĐÃ BỎ CHỮ FIFO)                               -->
             <!-- ====================================================================== -->
-            <Grid>
+            <Grid x:Name="SubTabHistory">
                 <Grid.Style>
                     <Style TargetType="Grid">
-                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Setter Property="Visibility" Value="Hidden"/>
+                        <Setter Property="IsHitTestVisible" Value="False"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ActiveTab}" Value="History">
                                 <Setter Property="Visibility" Value="Visible"/>
+                                <Setter Property="IsHitTestVisible" Value="True"/>
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -550,7 +558,7 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Text="📜 LỊCH SỬ CÁC LÔ HÀNG ĐÃ NHẬP KHO" FontSize="15" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,10"/>
-                        <DataGrid Grid.Row="1" ItemsSource="{Binding Data.InventoryBatches}" AutoGenerateColumns="False" IsReadOnly="True">
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding Data.InventoryBatches}" AutoGenerateColumns="False" IsReadOnly="True" helpers:TabProgressiveRender.IsDataRegion="True">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Mã Phiếu" Binding="{Binding ReceiptCode}" Width="125" FontWeight="Bold"/>
                                 <DataGridTextColumn Header="Mặt Hàng" Binding="{Binding FoodItemName}" Width="160" FontWeight="Bold"/>

@@ -9,6 +9,7 @@
     <EnableVisualDiagnostics>false</EnableVisualDiagnostics>
     <XAMLHotReload>false</XAMLHotReload>
     <ApplicationIcon>Resources\app_icon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

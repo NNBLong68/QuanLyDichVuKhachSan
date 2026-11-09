@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -55,7 +55,7 @@ namespace QuanLyDichVuKhachSan.Services
                 System.Diagnostics.Debug.WriteLine($"[Config Warning] Không thể đọc appsettings.json: {ex.Message}");
             }
 
-            return @"Server=.\SQLEXPRESS01;Database=QuanLyDichVuKhachSan;Trusted_Connection=True;TrustServerCertificate=True;";
+            return @"Server=.\SQLEXPRESS01;Database=QuanLyDichVuKhachSan;Trusted_Connection=True;TrustServerCertificate=True;Pooling=true;Min Pool Size=5;Max Pool Size=100;Connect Timeout=5;MultipleActiveResultSets=True;Packet Size=8192;Application Name=QuanLyDichVuKhachSan;";
         }
 
         #region Helper Safe Methods for Column Mapping
@@ -609,14 +609,17 @@ namespace QuanLyDichVuKhachSan.Services
 
                             cmdDetail.ExecuteNonQuery();
 
-                            // Cập nhật tồn kho & giá vốn MonAn nếu trigger chưa chạy
+                            // Chỉ cập nhật tồn kho & giá vốn thủ công nếu Trigger trg_ChiTietPhieuNhapKho_CongTonKho không tồn tại
                             string updateFood = @"
-                                UPDATE MonAn
-                                SET SoLuongTonKho = SoLuongTonKho + (@SoLuongNhap * @HeSoQuyDoi),
-                                    GiaVon = CASE WHEN (SoLuongTonKho + (@SoLuongNhap * @HeSoQuyDoi)) > 0 
-                                                  THEN ((SoLuongTonKho * GiaVon) + (@SoLuongNhap * @DonGiaNhap)) / (SoLuongTonKho + (@SoLuongNhap * @HeSoQuyDoi))
-                                                  ELSE (@DonGiaNhap / @HeSoQuyDoi) END
-                                WHERE Id = @MonAnId;";
+                                IF OBJECT_ID('trg_ChiTietPhieuNhapKho_CongTonKho', 'TR') IS NULL
+                                BEGIN
+                                    UPDATE MonAn
+                                    SET GiaVonBinhQuan = CASE WHEN (SoLuongTonKho + (@SoLuongNhap * @HeSoQuyDoi)) > 0 
+                                                              THEN ((SoLuongTonKho * GiaVonBinhQuan) + (@SoLuongNhap * @DonGiaNhap)) / (SoLuongTonKho + (@SoLuongNhap * @HeSoQuyDoi))
+                                                              ELSE (@DonGiaNhap / @HeSoQuyDoi) END,
+                                        SoLuongTonKho = SoLuongTonKho + (@SoLuongNhap * @HeSoQuyDoi)
+                                    WHERE Id = @MonAnId;
+                                END";
                             using var cmdFood = new SqlCommand(updateFood, conn, tran);
                             cmdFood.Parameters.AddWithValue("@SoLuongNhap", item.Quantity > 0 ? item.Quantity : 1);
                             cmdFood.Parameters.AddWithValue("@HeSoQuyDoi", item.ConversionRate > 0 ? item.ConversionRate : 1);
@@ -846,7 +849,9 @@ namespace QuanLyDichVuKhachSan.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[SQL Error] UpdateFoodDefaultQuota: {ex.Message}");
-                _ = ExecuteNonQueryAsync("UPDATE MonAn SET GioiHanMacDinh = @Quota, GioiHanNgay = CASE WHEN @Apply = 1 THEN @Quota ELSE GioiHanNgay END WHERE Id = @Id",
+                _ = ExecuteNonQueryAsync(
+                    "IF COL_LENGTH('MonAn', 'GioiHanMacDinh') IS NOT NULL " +
+                    "EXEC sp_executesql N'UPDATE MonAn SET GioiHanMacDinh = @Quota, GioiHanNgay = CASE WHEN @Apply = 1 THEN @Quota ELSE GioiHanNgay END WHERE Id = @Id', N'@Quota INT, @Apply INT, @Id INT', @Quota=@Quota, @Apply=@Apply, @Id=@Id",
                     new SqlParameter("@Quota", defaultQuota),
                     new SqlParameter("@Apply", applyToday ? 1 : 0),
                     new SqlParameter("@Id", foodId));
@@ -872,7 +877,9 @@ namespace QuanLyDichVuKhachSan.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[SQL Error] SetCustomQuotaForToday: {ex.Message}");
-                _ = ExecuteNonQueryAsync("UPDATE MonAn SET GioiHanTuyChinhHomNay = @Quota, GioiHanNgay = @Quota WHERE Id = @Id",
+                _ = ExecuteNonQueryAsync(
+                    "IF COL_LENGTH('MonAn', 'GioiHanTuyChinhHomNay') IS NOT NULL " +
+                    "EXEC sp_executesql N'UPDATE MonAn SET GioiHanTuyChinhHomNay = @Quota, GioiHanNgay = @Quota WHERE Id = @Id', N'@Quota INT, @Id INT', @Quota=@Quota, @Id=@Id",
                     new SqlParameter("@Quota", customQuota),
                     new SqlParameter("@Id", foodId));
                 return true;
@@ -924,6 +931,113 @@ namespace QuanLyDichVuKhachSan.Services
         }
 
         /// <summary>
+        /// Tự động quyết toán các giao dịch mẫu đã qua trước ngày hôm nay (< CAST(GETDATE() AS DATE))
+        /// chuyển sang trạng thái hoàn tất / đã thanh toán để phục vụ thống kê, đồng thời đảm bảo
+        /// lịch phân công ca trực từ hôm nay đến hết tháng hiện tại.
+        /// </summary>
+        public void AutoSettlePastTransactions()
+        {
+            try
+            {
+                using var conn = new SqlConnection(ConnectionString);
+                conn.Open();
+                string sql = @"
+                    IF OBJECT_ID('sp_TuDongQuyetToanDuLieuCu', 'P') IS NOT NULL
+                    BEGIN
+                        EXEC sp_TuDongQuyetToanDuLieuCu;
+                    END
+                    ELSE
+                    BEGIN
+                        DECLARE @Today DATETIME = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
+
+                        -- 1. Đơn hàng món ăn trước hôm nay (trừ đơn Đã hủy) -> Đã giao & Đã thanh toán
+                        UPDATE DonHangMonAn
+                        SET TrangThai = CASE WHEN TrangThai = N'Đã hủy' THEN N'Đã hủy' ELSE N'Đã giao' END,
+                            DaThanhToan = CASE WHEN TrangThai = N'Đã hủy' THEN DaThanhToan ELSE 1 END,
+                            NguoiThanhToanId = CASE WHEN TrangThai = N'Đã hủy' THEN NguoiThanhToanId ELSE ISNULL(NguoiThanhToanId, ISNULL(NguoiTaoId, 1)) END,
+                            ThoiGianThanhToan = CASE WHEN TrangThai = N'Đã hủy' THEN ThoiGianThanhToan ELSE ISNULL(ThoiGianThanhToan, DATEADD(MINUTE, 20, NgayTao)) END
+                        WHERE NgayTao < @Today AND (DaThanhToan = 0 OR TrangThai IN (N'Chờ xử lý', N'Đang chuẩn bị'));
+
+                        -- 2. Đơn đặt sự kiện đã kết thúc trước hôm nay -> Hoàn tất & Đã thanh toán
+                        UPDATE DonDatSuKien
+                        SET TrangThaiDon = CASE WHEN TrangThaiDon LIKE N'Đã hủy%' THEN TrangThaiDon ELSE N'Hoàn tất' END,
+                            DaThanhToan = 1,
+                            NguoiThanhToanId = ISNULL(NguoiThanhToanId, ISNULL(NguoiHuyId, ISNULL(NguoiTaoId, 1))),
+                            ThoiGianThanhToan = ISNULL(ThoiGianThanhToan, ISNULL(ThoiGianHuy, ThoiGianKetThuc))
+                        WHERE ThoiGianKetThuc < @Today AND (DaThanhToan = 0 OR TrangThaiDon IN (N'Đã đặt', N'Đang sử dụng'));
+
+                        -- 3. Đơn thuê xe có hạn trả trước hôm nay -> Hoàn tất & Đã thanh toán
+                        UPDATE DonThueXe
+                        SET TrangThaiDon = CASE WHEN TrangThaiDon LIKE N'Đã hủy%' THEN TrangThaiDon ELSE N'Hoàn tất' END,
+                            NgayTraThucTe = CASE WHEN TrangThaiDon LIKE N'Đã hủy%' THEN NgayTraThucTe ELSE ISNULL(NgayTraThucTe, NgayTraDuKien) END,
+                            DaThanhToan = 1,
+                            NguoiThanhToanId = ISNULL(NguoiThanhToanId, ISNULL(NguoiHuyId, ISNULL(NguoiTaoId, 1))),
+                            ThoiGianThanhToan = ISNULL(ThoiGianThanhToan, ISNULL(ThoiGianHuy, ISNULL(NgayTraThucTe, NgayTraDuKien)))
+                        WHERE NgayTraDuKien < @Today AND (DaThanhToan = 0 OR TrangThaiDon IN (N'Đã đặt', N'Đang thuê'));
+
+                        -- 4. Bãi đỗ xe vào trước hôm nay (trừ xe miễn phí của khách đang ở phòng) -> Đã ra bãi & Đã thanh toán
+                        UPDATE BaiDoXe
+                        SET ThoiGianRa = ISNULL(ThoiGianRa, DATEADD(HOUR, 4, ThoiGianVao)),
+                            DaThanhToan = 1,
+                            NguoiThanhToanId = ISNULL(NguoiThanhToanId, ISNULL(NguoiTaoId, 1)),
+                            ThoiGianThanhToan = ISNULL(ThoiGianThanhToan, ISNULL(ThoiGianRa, DATEADD(HOUR, 4, ThoiGianVao)))
+                        WHERE ThoiGianVao < @Today AND (DaThanhToan = 0 OR (ThoiGianRa IS NULL AND HinhThucGui <> N'Khách phòng (Miễn phí)'));
+
+                        -- 5. Đơn giặt ủi hẹn trả trước hôm nay (trừ đơn Đã hủy) -> Hoàn tất & Đã thanh toán
+                        UPDATE DonGiatUi
+                        SET DoiTacId = CASE WHEN TrangThai = N'Đã hủy' THEN DoiTacId ELSE ISNULL(DoiTacId, 1) END,
+                            NgayGiaoDoiTac = CASE WHEN TrangThai = N'Đã hủy' THEN NgayGiaoDoiTac ELSE ISNULL(NgayGiaoDoiTac, DATEADD(HOUR, 1, NgayNhan)) END,
+                            NgayTraThucTe = CASE WHEN TrangThai = N'Đã hủy' THEN NgayTraThucTe ELSE ISNULL(NgayTraThucTe, NgayHenTra) END,
+                            TrangThai = CASE WHEN TrangThai = N'Đã hủy' THEN N'Đã hủy' ELSE N'Hoàn tất' END,
+                            DaThanhToan = CASE WHEN TrangThai = N'Đã hủy' THEN DaThanhToan ELSE 1 END,
+                            NguoiThanhToanId = CASE WHEN TrangThai = N'Đã hủy' THEN NguoiThanhToanId ELSE ISNULL(NguoiThanhToanId, ISNULL(NguoiTaoId, 1)) END,
+                            ThoiGianThanhToan = CASE WHEN TrangThai = N'Đã hủy' THEN ThoiGianThanhToan ELSE ISNULL(ThoiGianThanhToan, ISNULL(NgayTraThucTe, NgayHenTra)) END
+                        WHERE NgayHenTra < @Today AND (DaThanhToan = 0 OR TrangThai IN (N'Chờ giao đối tác', N'Đang giặt', N'Giặt xong'));
+                    END";
+                using var cmd = new SqlCommand(sql, conn);
+                cmd.ExecuteNonQuery();
+
+                // Tạo tự động các chỉ mục (Indexes) tối ưu hóa tốc độ truy vấn đa luồng
+                EnsurePerformanceIndexes(conn);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SQL Error] AutoSettlePastTransactions: {ex.Message}");
+            }
+        }
+
+        private static bool _indexesEnsured = false;
+        private static void EnsurePerformanceIndexes(SqlConnection conn)
+        {
+            if (_indexesEnsured) return;
+            try
+            {
+                string sql = @"
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DonHangMonAn_SoPhong_DaTT' AND object_id = OBJECT_ID('DonHangMonAn'))
+                        CREATE NONCLUSTERED INDEX IX_DonHangMonAn_SoPhong_DaTT ON DonHangMonAn(SoPhong, DaThanhToan) INCLUDE (TongTien, NgayTao);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DonDatSuKien_SoPhong_DaTT' AND object_id = OBJECT_ID('DonDatSuKien'))
+                        CREATE NONCLUSTERED INDEX IX_DonDatSuKien_SoPhong_DaTT ON DonDatSuKien(SoPhong, DaThanhToan) INCLUDE (KhuVucId, ThoiGianBatDau, ThoiGianKetThuc, TongTienDuKien, ChiPhiPhatSinh, TienCoc);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DonThueXe_SoPhong_DaTT' AND object_id = OBJECT_ID('DonThueXe'))
+                        CREATE NONCLUSTERED INDEX IX_DonThueXe_SoPhong_DaTT ON DonThueXe(SoPhong, DaThanhToan) INCLUDE (XeId, NgayThue, NgayTraDuKien, TienThue, ChiPhiPhatSinh, TienCoc);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DonGiatUi_SoPhong_DaTT' AND object_id = OBJECT_ID('DonGiatUi'))
+                        CREATE NONCLUSTERED INDEX IX_DonGiatUi_SoPhong_DaTT ON DonGiatUi(SoPhong, DaThanhToan) INCLUDE (TongTienThuKhach, NgayNhan, TrangThai);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_BaiDoXe_SoPhong_DaTT' AND object_id = OBJECT_ID('BaiDoXe'))
+                        CREATE NONCLUSTERED INDEX IX_BaiDoXe_SoPhong_DaTT ON BaiDoXe(SoPhong, DaThanhToan) INCLUDE (PhiGui, ThoiGianVao);
+
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_PhanCongCaTruc_NhanVien_Ngay' AND object_id = OBJECT_ID('PhanCongCaTruc'))
+                        CREATE NONCLUSTERED INDEX IX_PhanCongCaTruc_NhanVien_Ngay ON PhanCongCaTruc(NhanVienId, NgayTruc);";
+                using var cmd = new SqlCommand(sql, conn);
+                cmd.ExecuteNonQuery();
+                _indexesEnsured = true;
+            }
+            catch { }
+        }
+
+        /// <summary>
         /// Đọc toàn bộ Danh mục Xe từ CSDL SQL Server (Table XeChoThue)
         /// </summary>
         public List<Vehicle> LoadVehiclesFromDb()
@@ -934,9 +1048,8 @@ namespace QuanLyDichVuKhachSan.Services
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
                 string query = @"
-                    SELECT x.Id, x.BienSo, x.TenXe, x.LoaiXe, x.GiaThueNgay, x.TienCocQuyDinh,
-                           ISNULL(v.TrangThaiHienTai, x.TrangThai) AS TrangThaiHienTai,
-                           x.GhiChuTinhTrang, x.HinhAnh
+                    SELECT x.*,
+                           ISNULL(v.TrangThaiHienTai, x.TrangThai) AS TrangThaiHienTai
                     FROM XeChoThue x
                     LEFT JOIN vw_TrangThaiXeHienTai v ON v.XeId = x.Id
                     ORDER BY x.Id";
@@ -1382,6 +1495,7 @@ namespace QuanLyDichVuKhachSan.Services
 
                     string username = SafeGetString(reader, "TenDangNhap", "Username");
                     string passwordHash = SafeGetString(reader, "MatKhauHash", "MatKhau", "Password");
+                    string plainPassword = Helpers.SecurityHelper.DecodePasswordFromDb(passwordHash);
                     string fullName = SafeGetString(reader, "HoTen", "FullName");
                     bool isActive = SafeGetBool(reader, "TrangThai");
 
@@ -1389,7 +1503,7 @@ namespace QuanLyDichVuKhachSan.Services
                     {
                         Id = SafeGetInt(reader, "Id", "NguoiDungID", "TaiKhoanID"),
                         Username = username,
-                        Password = passwordHash,
+                        Password = plainPassword,
                         FullName = string.IsNullOrWhiteSpace(fullName) ? (role == UserRole.Admin ? "Chủ Khách Sạn" : "Lễ tân") : fullName,
                         Role = role,
                         PhoneNumber = SafeGetString(reader, "SoDienThoai", "PhoneNumber", "SDT"),
@@ -1479,7 +1593,7 @@ namespace QuanLyDichVuKhachSan.Services
                     using var conn2 = new SqlConnection(ConnectionString);
                     conn2.Open();
                     string detailQuery = @"
-                        SELECT ct.DonHangId, ct.MonAnId, ct.SoLuong, ct.DonGia, ct.GiaVon, ma.TenMon, ma.DonViBanLe 
+                        SELECT ct.DonHangId, ct.MonAnId, ct.SoLuong, ct.DonGia, ct.GiaVon, ma.TenMon, ma.DonViTinh 
                         FROM ChiTietDonHangMonAn ct 
                         JOIN MonAn ma ON ct.MonAnId = ma.Id";
                     using var detailCmd = new SqlCommand(detailQuery, conn2);
@@ -1494,7 +1608,7 @@ namespace QuanLyDichVuKhachSan.Services
                             {
                                 FoodItemId = SafeGetInt(detailReader, "MonAnId"),
                                 FoodItemName = SafeGetString(detailReader, "TenMon"),
-                                RetailUnit = SafeGetString(detailReader, "DonViBanLe"),
+                                RetailUnit = SafeGetString(detailReader, "DonViTinh", "DonViBanLe"),
                                 Quantity = SafeGetInt(detailReader, "SoLuong"),
                                 Price = SafeGetDecimal(detailReader, "DonGia"),
                                 CostPrice = SafeGetDecimal(detailReader, "GiaVon")
@@ -1926,6 +2040,7 @@ namespace QuanLyDichVuKhachSan.Services
                     TrangThai = N'Hoàn tất',
                     NgayTraThucTe = GETDATE(),
                     ChiPhiPhatSinh = @ChiPhiPhatSinh,
+                    TongTienThuKhach = (KhoiLuongKg * DonGiaKg) + @ChiPhiPhatSinh,
                     CoDenBu = @CoDenBu,
                     BenChiuTrachNhiem = @BenChiuTrachNhiem,
                     SoTienDenBu = @SoTienDenBu,
@@ -2067,6 +2182,32 @@ namespace QuanLyDichVuKhachSan.Services
                 {
                     System.Diagnostics.Debug.WriteLine($"[SQL Background Sync Warning]: {ex.Message}\nQuery: {sqlCommandText}");
                     return -1;
+                }
+            });
+        }
+
+        /// <summary>
+        /// Thực thi câu lệnh SQL trả về giá trị đơn lẻ (Scalar)
+        /// </summary>
+        public Task<object?> ExecuteScalarAsync(string sqlCommandText, params SqlParameter[] parameters)
+        {
+            return Task.Run(() =>
+            {
+                try
+                {
+                    using var conn = new SqlConnection(ConnectionString);
+                    conn.Open();
+                    using var cmd = new SqlCommand(sqlCommandText, conn);
+                    if (parameters != null && parameters.Length > 0)
+                    {
+                        cmd.Parameters.AddRange(parameters);
+                    }
+                    return cmd.ExecuteScalar();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SQL ExecuteScalarAsync Warning]: {ex.Message}\nQuery: {sqlCommandText}");
+                    return null;
                 }
             });
         }

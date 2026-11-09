@@ -1,10 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
+﻿using System;
 using System.Windows;
+using System.Windows.Input;
 using QuanLyDichVuKhachSan.Services;
 using QuanLyDichVuKhachSan.ViewModels;
-using QuanLyDichVuKhachSan.Views;
 
 namespace QuanLyDichVuKhachSan
 {
@@ -13,39 +11,37 @@ namespace QuanLyDichVuKhachSan
         public MainViewModel ViewModel { get; }
         public LoginViewModel LoginVM { get; }
 
-        // Cache view theo tên tab: mỗi tab chỉ được tạo một lần,
-        // các lần chuyển tab sau dùng lại instance cũ (giữ nguyên trạng thái).
-        private readonly Dictionary<string, FrameworkElement> _viewCache = new();
+        private bool _isFullScreen = false;
+        private WindowStyle _savedWindowStyle = WindowStyle.SingleBorderWindow;
+        private WindowState _savedWindowState = WindowState.Maximized;
+        private ResizeMode _savedResizeMode = ResizeMode.CanResize;
 
         public MainWindow()
         {
             InitializeComponent();
-
-            // MainViewModel lúc này rất nhẹ: chưa tạo ViewModel con, chưa nạp CSDL.
             ViewModel = new MainViewModel();
             LoginVM = new LoginViewModel();
 
             DataContext = ViewModel;
             LoginControl.DataContext = LoginVM;
 
+            // Khởi tạo ở kích thước nhỏ gọn cho màn hình đăng nhập
             ApplyLoginWindowSize();
 
-            // Nạp dữ liệu ngay từ lúc mở app, trên background thread.
-            // Màn hình đăng nhập vẫn hiện ngay; nếu người dùng đăng nhập sớm
-            // thì OnLoginSucceeded sẽ await chính task này.
+            // Nạp dữ liệu nền bất đồng bộ ngay khi mở ứng dụng (giúp mở app nhanh hơn)
             _ = DataService.Instance.InitializeAsync();
 
             LoginVM.LoginSucceeded += OnLoginSucceeded;
-            ViewModel.RequestLogout += OnLogout;
-            ViewModel.PropertyChanged += OnViewModelPropertyChanged;
-        }
+            ViewModel.RequestTabTransition += ExecuteProgressiveTabSwitch;
 
-        private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
-        {
-            if (e.PropertyName == nameof(MainViewModel.CurrentTab) && ViewModel.IsWorkspaceVisible)
+            ViewModel.RequestLogout += () =>
             {
-                ShowTab(ViewModel.CurrentTab);
-            }
+                if (_isFullScreen)
+                {
+                    ExitFullScreen();
+                }
+                ApplyLoginWindowSize();
+            };
         }
 
         private async void OnLoginSucceeded()
@@ -57,13 +53,12 @@ namespace QuanLyDichVuKhachSan
                 bool initialized = await DataService.Instance.InitializeAsync();
                 if (!initialized)
                 {
-                    HandleInitializationFailure(
-                        DataService.Instance.InitializationError ?? "Không rõ nguyên nhân.");
+                    HandleInitializationFailure(DataService.Instance.InitializationError ?? "Không rõ nguyên nhân.");
                     return;
                 }
 
-                ViewModel.InitializeWorkspace();
-                ShowTab(ViewModel.CurrentTab);
+                ViewModel.RefreshAuthState();
+                ExecuteProgressiveTabSwitch("RoomMap", () => ViewModel.RefreshTabData("RoomMap"));
             }
             catch (Exception ex)
             {
@@ -74,9 +69,6 @@ namespace QuanLyDichVuKhachSan
         private void HandleInitializationFailure(string message)
         {
             DataService.Instance.ResetInitialization();
-
-            // Đưa người dùng về màn hình đăng nhập để có thể thử lại,
-            // tránh bị kẹt ở màn hình "Đang tải dữ liệu..." không có nút bấm.
             AuthService.Instance.Logout();
             ApplyLoginWindowSize();
 
@@ -87,46 +79,123 @@ namespace QuanLyDichVuKhachSan
                 MessageBoxImage.Error);
         }
 
-        private void OnLogout()
+        private FrameworkElement? GetViewForTab(string tabName)
         {
-            ApplyLoginWindowSize();
+            return tabName switch
+            {
+                "RoomMap" => ViewRoomMap,
+                "Statistics" => ViewStatistics,
+                "Staff" => ViewStaff,
+                "Customers" => ViewCustomers,
+                "Inventory" => ViewInventory,
+                "ServicesConfig" => ViewServicesConfig,
+                "Food" => ViewFood,
+                "Event" => ViewEvent,
+                "Vehicle" => ViewVehicle,
+                "Parking" => ViewParking,
+                "Laundry" => ViewLaundry,
+                "Transactions" => ViewTransactions,
+                _ => null
+            };
         }
 
-        private void ShowTab(string tab)
+        private void ExecuteProgressiveTabSwitch(string tabName, Action? deferredRefresh)
         {
-            if (string.IsNullOrWhiteSpace(tab)) return;
-
-            if (!_viewCache.TryGetValue(tab, out var view))
+            var targetView = GetViewForTab(tabName);
+            if (targetView != null)
             {
-                view = CreateView(tab);
-                _viewCache[tab] = view;
+                // PHA 1 (0ms tức thì): Chuẩn bị vùng dữ liệu để khung Tiêu đề & Đề mục xuất hiện ngay lập tức
+                var regions = Helpers.TabProgressiveRender.PrepareStage1(targetView);
+
+                // Cập nhật tab hiện hành ngay lập tức (0ms) -> Vẽ ngay Tiêu đề, Header, Thẻ KPI & Khung đề mục
+                ViewModel.CurrentTab = tabName;
+
+                // PHA 2 (Ngay sau khi Tiêu đề & Đề mục đã hiển thị trên màn hình):
+                // Đổ dữ liệu lên giao diện với hiệu ứng trượt mượt mà
+                Helpers.TabProgressiveRender.ScheduleStage2(targetView, regions, deferredRefresh);
+            }
+            else
+            {
+                ViewModel.CurrentTab = tabName;
+                deferredRefresh?.Invoke();
+            }
+        }
+
+        private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            // Bắt tổ hợp phím Alt + Enter hoặc F11 để chuyển đổi toàn màn hình
+            bool isAlt = (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt;
+            bool isEnter = e.Key == Key.Return || e.Key == Key.Enter || e.SystemKey == Key.Return || e.SystemKey == Key.Enter;
+
+            if ((isAlt && isEnter) || e.Key == Key.F11)
+            {
+                ToggleFullScreen();
+                e.Handled = true;
+            }
+        }
+
+        private void BtnFullScreen_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleFullScreen();
+        }
+
+        public void ToggleFullScreen()
+        {
+            if (ViewModel == null || !ViewModel.IsLoggedIn)
+            {
+                return;
             }
 
-            TabContentHost.Content = view;
+            if (!_isFullScreen)
+            {
+                EnterFullScreen();
+            }
+            else
+            {
+                ExitFullScreen();
+            }
         }
 
-        private FrameworkElement CreateView(string tab)
+        private void EnterFullScreen()
         {
-            return tab switch
+            _savedWindowStyle = this.WindowStyle;
+            _savedWindowState = this.WindowState;
+            _savedResizeMode = this.ResizeMode;
+
+            this.WindowState = WindowState.Normal;
+            this.WindowStyle = WindowStyle.None;
+            this.ResizeMode = ResizeMode.NoResize;
+            this.WindowState = WindowState.Maximized;
+
+            _isFullScreen = true;
+            UpdateFullScreenButtonState();
+        }
+
+        private void ExitFullScreen()
+        {
+            this.WindowState = WindowState.Normal;
+            this.WindowStyle = _savedWindowStyle;
+            this.ResizeMode = _savedResizeMode;
+            this.WindowState = _savedWindowState;
+
+            _isFullScreen = false;
+            UpdateFullScreenButtonState();
+        }
+
+        private void UpdateFullScreenButtonState()
+        {
+            if (BtnFullScreen != null)
             {
-                "RoomMap" => new RoomMapView { DataContext = ViewModel.RoomMapVM },
-                "Statistics" => new StatisticsView { DataContext = ViewModel.StatisticsVM },
-                "Staff" => new StaffManagementView { DataContext = ViewModel.StaffVM },
-                "Customers" => new CustomerListView { DataContext = ViewModel.CustomerVM },
-                "Inventory" => new InventoryManagementView { DataContext = ViewModel.InventoryVM },
-                "ServicesConfig" => new ServicesConfigView { DataContext = ViewModel.ServicesConfigVM },
-                "Food" => new FoodServiceView { DataContext = ViewModel.FoodVM },
-                "Event" => new EventServiceView { DataContext = ViewModel.EventVM },
-                "Vehicle" => new VehicleServiceView { DataContext = ViewModel.VehicleVM },
-                "Parking" => new ParkingServiceView { DataContext = ViewModel.ParkingVM },
-                "Laundry" => new LaundryServiceView { DataContext = ViewModel.LaundryVM },
-                "Transactions" => new TransactionHistoryView { DataContext = ViewModel.TransactionsVM },
-                _ => throw new ArgumentOutOfRangeException(nameof(tab), tab, "Tab không hợp lệ.")
-            };
+                BtnFullScreen.Content = _isFullScreen ? "🗗 Cửa Sổ" : "⛶ Toàn Màn Hình";
+                BtnFullScreen.ToolTip = _isFullScreen
+                    ? "Quay về chế độ cửa sổ có thanh tiêu đề (Alt + Enter hoặc F11)"
+                    : "Chuyển sang chế độ toàn màn hình không có thanh tiêu đề (Alt + Enter hoặc F11)";
+            }
         }
 
         private void ApplyLoginWindowSize()
         {
+            this.WindowStyle = WindowStyle.SingleBorderWindow;
             this.WindowState = WindowState.Normal;
             this.ResizeMode = ResizeMode.CanMinimize;
             this.MinWidth = 460;
@@ -142,6 +211,8 @@ namespace QuanLyDichVuKhachSan
             this.MinHeight = 700;
             this.ResizeMode = ResizeMode.CanResize;
             this.WindowState = WindowState.Maximized;
+            _isFullScreen = false;
+            UpdateFullScreenButtonState();
         }
 
         private void CenterWindowOnScreen()
