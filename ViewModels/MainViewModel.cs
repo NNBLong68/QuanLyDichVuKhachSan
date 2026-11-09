@@ -50,7 +50,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public InventoryViewModel InventoryVM => _inventoryVM ??= new InventoryViewModel();
 
         private ServicesConfigViewModel? _servicesConfigVM;
-        public ServicesConfigViewModel ServicesConfigVM => _servicesConfigVM ??= new ServicesConfigViewModel();
+        public ServicesConfigViewModel ServicesConfigVM => _servicesConfigVM ??= new ServicesConfigViewModel(RefreshServiceVisibilities);
 
         private TransactionHistoryViewModel? _transactionsVM;
         public TransactionHistoryViewModel TransactionsVM => _transactionsVM ??= new TransactionHistoryViewModel();

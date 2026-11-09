@@ -61,11 +61,12 @@
                                                 <TextBlock Text="{Binding Description}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0" TextWrapping="Wrap"/>
                                             </StackPanel>
 
-                                            <!-- Checkbox Bật / Tắt Active -->
-                                            <CheckBox Grid.Column="1" IsChecked="{Binding IsActive}" VerticalAlignment="Center" Margin="12,0,0,0"
+                                            <!-- Tick / bỏ tick để bật / tắt dịch vụ trên thanh điều hướng -->
+                                            <CheckBox Grid.Column="1" IsChecked="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" Margin="12,0,0,0"
                                                       Content="Hoạt Động" FontWeight="Bold" FontSize="12" Foreground="#15803D"
                                                       Command="{Binding DataContext.ToggleActiveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                      CommandParameter="{Binding}"/>
+                                                      CommandParameter="{Binding}"
+                                                      ToolTip="Tick để hiện, bỏ tick để ẩn dịch vụ khỏi thanh điều hướng (áp dụng cho cả Admin và Lễ tân)."/>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>

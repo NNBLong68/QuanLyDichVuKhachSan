@@ -14,6 +14,8 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public DataService Data => DataService.Instance;
         public AuthService Auth => AuthService.Instance;
 
+        private readonly Action? _onServicesConfigApplied;
+
         public bool IsAdmin => Auth.IsAdmin;
 
         private string _newCode = "";
@@ -33,11 +35,12 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public ICommand ToggleActiveCommand { get; }
         public ICommand OpenAccountManagementCommand { get; }
 
-        public ServicesConfigViewModel()
+        public ServicesConfigViewModel(Action? onServicesConfigApplied = null)
         {
+            _onServicesConfigApplied = onServicesConfigApplied;
             AddServiceCommand = new RelayCommand(AddService);
             DeleteServiceCommand = new RelayCommand(DeleteService);
-            ToggleActiveCommand = new RelayCommand(ToggleActive);
+            ToggleActiveCommand = new RelayCommand(async parameter => await ToggleActiveAsync(parameter));
             OpenAccountManagementCommand = new RelayCommand(OpenAccountManagement);
         }
 
@@ -47,17 +50,32 @@ namespace QuanLyDichVuKhachSan.ViewModels
             win.ShowDialog();
         }
 
-        private void ToggleActive(object? parameter)
+        private async System.Threading.Tasks.Task ToggleActiveAsync(object? parameter)
         {
-            if (parameter is HotelServiceConfig service)
+            if (parameter is not HotelServiceConfig service) return;
+
+            // CheckBox đã cập nhật IsActive trước khi Command được gọi.
+            bool desiredState = service.IsActive;
+
+            int affected = await DatabaseService.Instance.ExecuteNonQueryAsync(
+                "UPDATE DichVuHeThong SET DangHoatDong = @Active WHERE MaDV = @Code",
+                new SqlParameter("@Active", desiredState ? 1 : 0),
+                new SqlParameter("@Code", service.Code));
+
+            if (affected <= 0)
             {
-                // Đồng bộ xuống CSDL SQL Server (Table DichVuHeThong)
-                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                    "UPDATE DichVuHeThong SET DangHoatDong = @Active WHERE MaDV = @Code",
-                    new SqlParameter("@Active", service.IsActive ? 1 : 0),
-                    new SqlParameter("@Code", service.Code)
-                );
+                // Không lưu được thì trả checkbox về trạng thái cũ để giao diện và CSDL luôn khớp nhau.
+                service.IsActive = !desiredState;
+                MessageBox.Show(
+                    "Không thể cập nhật trạng thái dịch vụ vào CSDL. Vui lòng kiểm tra kết nối SQL Server rồi thử lại!",
+                    "Lỗi cập nhật",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
             }
+
+            // Làm mới thanh điều hướng ngay sau khi tick/bỏ tick thành công.
+            _onServicesConfigApplied?.Invoke();
         }
 
         private void AddService(object? parameter)
