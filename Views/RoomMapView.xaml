@@ -575,7 +575,6 @@
                                 <TextBlock Text="{Binding TotalUnpaidAmount, StringFormat='{}{0:N0} đ'}" FontSize="22" FontWeight="Bold" Foreground="#DC2626"/>
                                 <TextBlock Text="{Binding TotalPaidAmount, StringFormat='{} (Đã trả: {0:N0} đ)'}" FontSize="12" Foreground="#059669" VerticalAlignment="Center" Margin="10,0,0,0"/>
                             </StackPanel>
-                            <TextBlock Text="* Chỉ tính chi phí các dịch vụ phát sinh, không gồm tiền phòng" FontSize="10.5" Foreground="#94A3B8" Margin="0,2,0,0"/>
                         </StackPanel>
 
                         <!-- Large Payment Button -->

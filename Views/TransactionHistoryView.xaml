@@ -26,10 +26,7 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <StackPanel>
-                <TextBlock Text="📜 LỊCH SỬ GIAO DỊCH &amp; HÓA ĐƠN ĐÃ THANH TOÁN" FontSize="19" FontWeight="Bold" Foreground="#0F172A"/>
-                <TextBlock Text="Theo dõi toàn bộ các giao dịch thanh toán phòng và xuất hóa đơn riêng của tất cả dịch vụ" FontSize="11.5" Foreground="#64748B" Margin="0,3,0,0"/>
-            </StackPanel>
+            <TextBlock Text="📜 LỊCH SỬ GIAO DỊCH &amp; HÓA ĐƠN ĐÃ THANH TOÁN" FontSize="19" FontWeight="Bold" Foreground="#0F172A" VerticalAlignment="Center"/>
             <Button Grid.Column="1" Command="{Binding RefreshCommand}" Content="🔄 Làm Mới Dữ Liệu" Style="{StaticResource ModernButton}" Height="34" Padding="14,0"/>
         </Grid>
 

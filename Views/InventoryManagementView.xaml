@@ -29,12 +29,7 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="📦 QUẢN LÝ KHO HÀNG" FontSize="19" FontWeight="Bold" Foreground="#0F172A" VerticalAlignment="Center"/>
-                <Border Background="#E0F2FE" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="Mô hình Chứng từ Thực tế &amp; Giá vốn Bình quân" FontSize="11" FontWeight="SemiBold" Foreground="#0369A1"/>
-                </Border>
-            </StackPanel>
+            <TextBlock Text="📦 QUẢN LÝ KHO HÀNG" FontSize="19" FontWeight="Bold" Foreground="#0F172A" VerticalAlignment="Center"/>
             <Button Grid.Column="1" Command="{Binding RefreshCommand}" Content="🔄 Làm Mới Dữ Liệu" Style="{StaticResource ModernButton}" Height="32" Padding="12,0"/>
         </Grid>
 

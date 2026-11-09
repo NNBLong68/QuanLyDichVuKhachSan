@@ -26,10 +26,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="👥 QUẢN LÝ ĐỘI NGŨ LỄ TÂN &amp; THỜI KHÓA BIỂU CA TRỰC" FontSize="20" FontWeight="Bold" Foreground="#1E293B"/>
-                    <TextBlock Text="Quản lý danh sách nhân viên và điều phối lịch trực lễ tân khách sạn" FontSize="11.5" Foreground="#64748B" Margin="0,3,0,0"/>
-                </StackPanel>
+                <TextBlock Text="👥 QUẢN LÝ ĐỘI NGŨ LỄ TÂN &amp; THỜI KHÓA BIỂU CA TRỰC" FontSize="20" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
 
                 <!-- Thẻ nhân viên trực ca hiện tại -->
                 <Border Grid.Column="1" Style="{StaticResource StatCard}" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="10" Padding="14,8" MinWidth="260">
