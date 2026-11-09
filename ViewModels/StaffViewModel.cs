@@ -86,7 +86,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public AuthService Auth => AuthService.Instance;
 
         public bool IsAdmin => Auth.IsAdmin;
-        public string CurrentDutyStaffDisplay => Data.GetCurrentDutyStaffName();
+        public string CurrentDutyStaffDisplay => Data.GetScheduledDutyStaffName();
 
         // Thêm nhân viên mới
         private string _newStaffCode = "NV004";

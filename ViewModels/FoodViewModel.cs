@@ -331,7 +331,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 PaymentMethod = IsDirectPayment ? PaymentMethod : "Ghi nợ vào phòng",
                 TotalAmount = CartTotal,
                 Note = OrderNote?.Trim() ?? "",
-                RecordedBy = Auth.IsAdmin ? "Chủ khách sạn" : Data.GetCurrentDutyStaffName(DateTime.Now)
+                RecordedBy = Auth.IsAdmin ? "Chủ khách sạn (Admin)" : Data.GetCurrentDutyStaffName(DateTime.Now)
             };
 
             foreach (var item in CurrentCartItems)

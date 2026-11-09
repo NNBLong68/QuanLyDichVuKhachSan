@@ -297,7 +297,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 NguoiThanhToanId = (isFreeResident || isPayImmediateByTurn) ? Data.GetCurrentDutyStaffId() : null,
                 ThoiGianThanhToan = (isFreeResident || isPayImmediateByTurn) ? DateTime.Now : null,
                 RepairNote = RepairNote?.Trim() ?? "",
-                RecordedBy = Auth.IsAdmin ? "Chủ khách sạn" : Data.GetCurrentDutyStaffName(DateTime.Now)
+                RecordedBy = Auth.IsAdmin ? "Chủ khách sạn (Admin)" : Data.GetCurrentDutyStaffName(DateTime.Now)
             };
 
             if (isFreeResident)

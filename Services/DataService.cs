@@ -703,17 +703,14 @@ namespace QuanLyDichVuKhachSan.Services
             return 1;
         }
 
-        public string GetCurrentDutyStaffName(DateTime? atTime = null)
+        /// <summary>
+        /// Lấy tên nhân viên đang trực ca thực tế theo đúng bảng thời khóa biểu phân công ca trực (bất kể ai đang đăng nhập).
+        /// Hỗ trợ hiển thị đầy đủ nếu ca trực có nhiều nhân viên (ví dụ: "Nguyễn Văn A, Trần Thị B").
+        /// </summary>
+        public string GetScheduledDutyStaffName(DateTime? atTime = null)
         {
             try
             {
-                // Nếu tài khoản đang đăng nhập là Admin -> Ghi nhận là "Chủ khách sạn"
-                if (AuthService.Instance.IsAdmin)
-                {
-                    return "Chủ khách sạn";
-                }
-
-                // Nếu là tài khoản Lễ tân -> Lấy tên nhân viên theo ca trực được phân công tại thời điểm đó
                 DateTime targetTime = atTime ?? DateTime.Now;
                 TimeSpan timeOfDay = targetTime.TimeOfDay;
 
@@ -727,27 +724,55 @@ namespace QuanLyDichVuKhachSan.Services
 
                 if (currentShift != null)
                 {
-                    var assignment = ShiftAssignments.FirstOrDefault(a => 
-                        a.ShiftDate.Date == targetTime.Date && a.ShiftId == currentShift.Id);
+                    var assignments = ShiftAssignments.Where(a => 
+                        a.ShiftDate.Date == targetTime.Date && a.ShiftId == currentShift.Id && a.StaffId > 0).ToList();
 
-                    if (assignment != null && assignment.StaffId > 0)
+                    var names = new List<string>();
+                    foreach (var a in assignments)
                     {
-                        if (!string.IsNullOrWhiteSpace(assignment.StaffName) && assignment.StaffName != "Chưa phân công")
+                        string name = "";
+                        if (!string.IsNullOrWhiteSpace(a.StaffName) && a.StaffName != "Chưa phân công")
                         {
-                            return assignment.StaffName;
+                            name = a.StaffName.Trim();
                         }
-                        var staff = StaffList.FirstOrDefault(x => x.Id == assignment.StaffId);
-                        if (staff != null) return staff.FullName;
+                        else
+                        {
+                            var staff = StaffList.FirstOrDefault(x => x.Id == a.StaffId);
+                            if (staff != null) name = staff.FullName.Trim();
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(name) && !names.Contains(name))
+                        {
+                            names.Add(name);
+                        }
+                    }
+
+                    if (names.Count > 0)
+                    {
+                        return string.Join(", ", names);
                     }
                 }
 
-                // Nếu thời điểm đó chưa phân ca cụ thể, lấy nhân viên lễ tân đang làm việc trong danh sách
                 var activeStaff = StaffList.FirstOrDefault(x => x.Status == "Đang làm việc");
                 if (activeStaff != null) return activeStaff.FullName;
                 if (StaffList.Count > 0) return StaffList[0].FullName;
             }
             catch { }
-            return "Phạm Minh Tuấn";
+            return "Chưa phân ca";
+        }
+
+        /// <summary>
+        /// Lấy tên người lập đơn / người thực hiện thu tiền thanh toán:
+        /// - Nếu tài khoản đang thao tác là Admin: Ưu tiên ghi nhận là "Chủ khách sạn (Admin)".
+        /// - Nếu tài khoản đang thao tác là Lễ tân: Ghi nhận tên nhân viên lễ tân đang trực ca đó theo thời khóa biểu.
+        /// </summary>
+        public string GetCurrentDutyStaffName(DateTime? atTime = null)
+        {
+            if (AuthService.Instance.IsAdmin)
+            {
+                return "Chủ khách sạn (Admin)";
+            }
+            return GetScheduledDutyStaffName(atTime);
         }
 
         public List<TransactionRecord> GetAllTransactions()
@@ -770,8 +795,8 @@ namespace QuanLyDichVuKhachSan.Services
                     PaymentTime = inv.InvoiceDate,
                     Amount = inv.RoomCost,
                     PaymentMethod = "Thanh toán phòng (Check-out)",
-                    CreatedBy = !string.IsNullOrWhiteSpace(inv.IssuedBy) ? inv.IssuedBy : "Chủ khách sạn",
-                    PaidBy = !string.IsNullOrWhiteSpace(inv.PaidBy) ? inv.PaidBy : (!string.IsNullOrWhiteSpace(inv.IssuedBy) ? inv.IssuedBy : "Chủ khách sạn"),
+                    CreatedBy = !string.IsNullOrWhiteSpace(inv.IssuedBy) ? inv.IssuedBy : "Chủ khách sạn (Admin)",
+                    PaidBy = !string.IsNullOrWhiteSpace(inv.PaidBy) ? inv.PaidBy : (!string.IsNullOrWhiteSpace(inv.IssuedBy) ? inv.IssuedBy : "Chủ khách sạn (Admin)"),
                     Status = "Đã thanh toán",
                     IsPaid = true,
                     OriginalObject = inv
@@ -781,8 +806,8 @@ namespace QuanLyDichVuKhachSan.Services
             // 2. Dịch vụ Ăn uống / Mini-bar
             foreach (var fo in FoodOrders)
             {
-                string creator = !string.IsNullOrWhiteSpace(fo.RecordedBy) ? fo.RecordedBy : (fo.NguoiTaoId == 0 ? "Chủ khách sạn" : "Phạm Minh Tuấn");
-                string payer = !string.IsNullOrWhiteSpace(fo.PaidByStaffName) ? fo.PaidByStaffName : (!string.IsNullOrWhiteSpace(fo.RecordedBy) ? fo.RecordedBy : (fo.NguoiThanhToanId == 0 ? "Chủ khách sạn" : "Phạm Minh Tuấn"));
+                string creator = !string.IsNullOrWhiteSpace(fo.RecordedBy) ? fo.RecordedBy : (fo.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Phạm Minh Tuấn");
+                string payer = !string.IsNullOrWhiteSpace(fo.PaidByStaffName) ? fo.PaidByStaffName : (!string.IsNullOrWhiteSpace(fo.RecordedBy) ? fo.RecordedBy : (fo.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Phạm Minh Tuấn"));
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = fo.OrderCode,
@@ -807,8 +832,8 @@ namespace QuanLyDichVuKhachSan.Services
             foreach (var eb in EventBookings)
             {
                 decimal amt = (eb.DaThanhToan || eb.PaymentStatus == "Hoàn tất" || eb.PaymentStatus == "Ghi nợ vào phòng") ? eb.FinalTotal : eb.DepositAmount;
-                string creator = !string.IsNullOrWhiteSpace(eb.RecordedBy) ? eb.RecordedBy : (eb.NguoiTaoId == 0 ? "Chủ khách sạn" : "Trần Thị Mai");
-                string payer = !string.IsNullOrWhiteSpace(eb.PaidByStaffName) ? eb.PaidByStaffName : (!string.IsNullOrWhiteSpace(eb.RecordedBy) ? eb.RecordedBy : (eb.NguoiThanhToanId == 0 ? "Chủ khách sạn" : "Trần Thị Mai"));
+                string creator = !string.IsNullOrWhiteSpace(eb.RecordedBy) ? eb.RecordedBy : (eb.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Trần Thị Mai");
+                string payer = !string.IsNullOrWhiteSpace(eb.PaidByStaffName) ? eb.PaidByStaffName : (!string.IsNullOrWhiteSpace(eb.RecordedBy) ? eb.RecordedBy : (eb.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Trần Thị Mai"));
                 string ebStatus = (eb.OrderStatus != null && eb.OrderStatus.StartsWith("Đã hủy"))
                     ? eb.OrderStatus
                     : (eb.DaThanhToan ? "Đã thanh toán" : (!string.IsNullOrWhiteSpace(eb.PaymentStatus) ? eb.PaymentStatus : "Chưa thanh toán"));
@@ -835,8 +860,8 @@ namespace QuanLyDichVuKhachSan.Services
             // 4. Thuê xe máy
             foreach (var vr in VehicleRentals)
             {
-                string creator = !string.IsNullOrWhiteSpace(vr.RecordedBy) ? vr.RecordedBy : (vr.NguoiTaoId == 0 ? "Chủ khách sạn" : "Nguyễn Văn An");
-                string payer = !string.IsNullOrWhiteSpace(vr.PaidByStaffName) ? vr.PaidByStaffName : (!string.IsNullOrWhiteSpace(vr.RecordedBy) ? vr.RecordedBy : (vr.NguoiThanhToanId == 0 ? "Chủ khách sạn" : "Nguyễn Văn An"));
+                string creator = !string.IsNullOrWhiteSpace(vr.RecordedBy) ? vr.RecordedBy : (vr.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Nguyễn Văn An");
+                string payer = !string.IsNullOrWhiteSpace(vr.PaidByStaffName) ? vr.PaidByStaffName : (!string.IsNullOrWhiteSpace(vr.RecordedBy) ? vr.RecordedBy : (vr.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Nguyễn Văn An"));
                 string vrStatus = (vr.OrderStatus != null && vr.OrderStatus.StartsWith("Đã hủy"))
                     ? vr.OrderStatus
                     : (vr.DaThanhToan ? "Đã thanh toán" : (vr.Status == "Đã trả" || vr.Status == "Hoàn tất" ? "Đã thanh toán" : vr.Status));
@@ -866,8 +891,8 @@ namespace QuanLyDichVuKhachSan.Services
                 if (pr.ParkingFee <= 0 || pr.ChargeType == ParkingChargeType.ResidentFree || !string.IsNullOrWhiteSpace(pr.RoomNumber))
                     continue;
 
-                string creator = !string.IsNullOrWhiteSpace(pr.RecordedBy) ? pr.RecordedBy : (pr.NguoiTaoId == 0 ? "Chủ khách sạn" : "Lê Hoàng Nam");
-                string payer = !string.IsNullOrWhiteSpace(pr.PaidByStaffName) ? pr.PaidByStaffName : (!string.IsNullOrWhiteSpace(pr.RecordedBy) ? pr.RecordedBy : (pr.NguoiThanhToanId == 0 ? "Chủ khách sạn" : "Lê Hoàng Nam"));
+                string creator = !string.IsNullOrWhiteSpace(pr.RecordedBy) ? pr.RecordedBy : (pr.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Lê Hoàng Nam");
+                string payer = !string.IsNullOrWhiteSpace(pr.PaidByStaffName) ? pr.PaidByStaffName : (!string.IsNullOrWhiteSpace(pr.RecordedBy) ? pr.RecordedBy : (pr.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Lê Hoàng Nam"));
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = pr.TicketCode,
@@ -889,8 +914,8 @@ namespace QuanLyDichVuKhachSan.Services
             // 6. Giặt ủi
             foreach (var lo in LaundryOrders)
             {
-                string creator = !string.IsNullOrWhiteSpace(lo.RecordedBy) ? lo.RecordedBy : (lo.NguoiTaoId == 0 ? "Chủ khách sạn" : "Trần Thị Mai");
-                string payer = !string.IsNullOrWhiteSpace(lo.PaidByStaffName) ? lo.PaidByStaffName : (!string.IsNullOrWhiteSpace(lo.RecordedBy) ? lo.RecordedBy : (lo.NguoiThanhToanId == 0 ? "Chủ khách sạn" : "Trần Thị Mai"));
+                string creator = !string.IsNullOrWhiteSpace(lo.RecordedBy) ? lo.RecordedBy : (lo.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Trần Thị Mai");
+                string payer = !string.IsNullOrWhiteSpace(lo.PaidByStaffName) ? lo.PaidByStaffName : (!string.IsNullOrWhiteSpace(lo.RecordedBy) ? lo.RecordedBy : (lo.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Trần Thị Mai"));
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = lo.OrderCode,

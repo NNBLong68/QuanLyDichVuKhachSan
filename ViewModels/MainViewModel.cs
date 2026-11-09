@@ -69,7 +69,8 @@ namespace QuanLyDichVuKhachSan.ViewModels
         // Header role display: Chỉ hiện Admin hoặc Lễ Tân, không hiện họ tên
         public string CurrentUserRoleDisplay => Auth.IsAdmin ? "Admin" : "Lễ Tân";
         public string RoleBadgeBackground => Auth.IsAdmin ? "#D97706" : "#0D9488";
-        public string AdminBadgeTooltip => Auth.IsAdmin ? "Click chuột phải để Quản lý tài khoản (Đổi user/pass, bật/tắt)" : "Tài khoản Lễ Tân";
+        public string AdminBadgeTooltip => "Nhấp chuột phải để Đăng xuất";
+        public string CurrentDutyStaffDisplay => Data.GetScheduledDutyStaffName();
 
         // ------------------------------------------------------------------
         // Trạng thái workspace: chỉ hiện giao diện làm việc sau khi dữ liệu sẵn sàng.
@@ -194,6 +195,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             IsDataReady = true;
 
+            OnPropertyChanged(nameof(CurrentDutyStaffDisplay));
             OnPropertyChanged(nameof(FilteredNotifications));
             OnPropertyChanged(nameof(UnreadNotificationCount));
             OnPropertyChanged(nameof(HasUnreadNotifications));
@@ -381,6 +383,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             OnPropertyChanged(nameof(CurrentUserRoleDisplay));
             OnPropertyChanged(nameof(RoleBadgeBackground));
             OnPropertyChanged(nameof(AdminBadgeTooltip));
+            OnPropertyChanged(nameof(CurrentDutyStaffDisplay));
             OnPropertyChanged(nameof(IsWorkspaceVisible));
             OnPropertyChanged(nameof(IsWorkspaceLoading));
 

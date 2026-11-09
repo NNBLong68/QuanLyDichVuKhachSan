@@ -159,6 +159,15 @@ namespace QuanLyDichVuKhachSan
             {
                 ToggleFullScreen();
                 e.Handled = true;
+                return;
+            }
+
+            // Nhấn ESC để thoát toàn màn hình về dạng cửa sổ
+            if (e.Key == Key.Escape && _isFullScreen)
+            {
+                ExitFullScreen();
+                e.Handled = true;
+                return;
             }
         }
 

@@ -99,8 +99,8 @@ namespace QuanLyDichVuKhachSan.Views
             TxtPhoneAndCccd.Text = !string.IsNullOrWhiteSpace(trans.PhoneNumber) ? trans.PhoneNumber : trans.ServiceCategory;
             TxtRoomNumber.Text = trans.RoomDisplay;
             TxtInvoiceDate.Text = trans.PaymentTime.ToString("dd/MM/yyyy HH:mm");
-            TxtCreatorStaff.Text = !string.IsNullOrWhiteSpace(trans.CreatedBy) ? trans.CreatedBy : "Chủ khách sạn";
-            TxtCashierStaff.Text = !string.IsNullOrWhiteSpace(trans.PaidBy) ? trans.PaidBy : "Chủ khách sạn";
+            TxtCreatorStaff.Text = !string.IsNullOrWhiteSpace(trans.CreatedBy) ? trans.CreatedBy : "Chủ khách sạn (Admin)";
+            TxtCashierStaff.Text = !string.IsNullOrWhiteSpace(trans.PaidBy) ? trans.PaidBy : "Chủ khách sạn (Admin)";
             TxtGrandTotal.Text = $"{trans.Amount:N0} đ";
 
             if (trans.OriginalObject is RoomInvoice roomInv && roomInv.PaidItems.Count > 0)
@@ -206,12 +206,13 @@ namespace QuanLyDichVuKhachSan.Views
         {
             if (invoice == null) return;
 
+            string defaultStaff = DataService.Instance.GetCurrentDutyStaffName(invoice.InvoiceDate);
             string creator = !string.IsNullOrWhiteSpace(invoice.IssuedBy) && invoice.IssuedBy != "Lễ Tân Trực Chính" 
                 ? invoice.IssuedBy 
-                : "Chủ khách sạn";
+                : defaultStaff;
             string cashier = !string.IsNullOrWhiteSpace(invoice.PaidBy)
                 ? invoice.PaidBy
-                : (!string.IsNullOrWhiteSpace(invoice.IssuedBy) ? invoice.IssuedBy : "Chủ khách sạn");
+                : (!string.IsNullOrWhiteSpace(invoice.IssuedBy) ? invoice.IssuedBy : defaultStaff);
 
             TxtInvoiceCode.Text = invoice.InvoiceCode;
             TxtCustomerName.Text = string.IsNullOrEmpty(invoice.CustomerName) ? "Khách lưu trú" : invoice.CustomerName;
@@ -254,10 +255,10 @@ namespace QuanLyDichVuKhachSan.Views
             
             string creator = !string.IsNullOrWhiteSpace(item.RecordedBy)
                 ? item.RecordedBy
-                : (AuthService.Instance.IsAdmin ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(item.UsedTime));
+                : (AuthService.Instance.IsAdmin ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(item.UsedTime));
 
             string cashier = item.IsPaid 
-                ? (!string.IsNullOrWhiteSpace(item.PaidBy) ? item.PaidBy : (!string.IsNullOrWhiteSpace(item.RecordedBy) ? item.RecordedBy : (AuthService.Instance.IsAdmin ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(item.UsedTime))))
+                ? (!string.IsNullOrWhiteSpace(item.PaidBy) ? item.PaidBy : (!string.IsNullOrWhiteSpace(item.RecordedBy) ? item.RecordedBy : (AuthService.Instance.IsAdmin ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(item.UsedTime))))
                 : "";
 
             TxtInvoiceCode.Text = $"HD-DV-{item.Id:D4}";
@@ -286,14 +287,14 @@ namespace QuanLyDichVuKhachSan.Views
             string roomStr = string.IsNullOrWhiteSpace(order.RoomNumber) ? "Khách vãng lai" : $"Phòng {DataService.NormalizeRoomNumber(order.RoomNumber)}";
             string creator = !string.IsNullOrWhiteSpace(order.RecordedBy) && order.RecordedBy != "Lễ Tân Trực Chính"
                 ? order.RecordedBy 
-                : (order.NguoiTaoId == 0 ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(order.CreatedAt));
+                : (order.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(order.CreatedAt));
 
             // Nếu tính chung vào tiền phòng và chưa thanh toán -> Người thu tiền: để trống
             string cashier = (order.PaymentType == FoodPaymentType.RoomBill || order.PaymentType == FoodPaymentType.AddToRoomBill) && !order.DaThanhToan
                 ? ""
                 : (!string.IsNullOrWhiteSpace(order.PaidByStaffName)
                     ? order.PaidByStaffName 
-                    : (!string.IsNullOrWhiteSpace(order.RecordedBy) ? order.RecordedBy : (order.NguoiThanhToanId == 0 ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(order.ThoiGianThanhToan ?? order.CreatedAt))));
+                    : (!string.IsNullOrWhiteSpace(order.RecordedBy) ? order.RecordedBy : (order.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(order.ThoiGianThanhToan ?? order.CreatedAt))));
 
             TxtInvoiceCode.Text = order.OrderCode;
             TxtCustomerName.Text = !string.IsNullOrWhiteSpace(order.CustomerName) ? order.CustomerName : "Khách hàng";
@@ -337,13 +338,13 @@ namespace QuanLyDichVuKhachSan.Views
             string roomStr = string.IsNullOrWhiteSpace(rental.RoomNumber) ? "Khách ngoài" : $"Phòng {DataService.NormalizeRoomNumber(rental.RoomNumber)}";
             string creator = !string.IsNullOrWhiteSpace(rental.RecordedBy) && rental.RecordedBy != "Lễ Tân Trực Chính"
                 ? rental.RecordedBy 
-                : (rental.NguoiTaoId == 0 ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(rental.RentalDate));
+                : (rental.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(rental.RentalDate));
 
             string cashier = !rental.DaThanhToan && !string.IsNullOrWhiteSpace(rental.RoomNumber)
                 ? ""
                 : (!string.IsNullOrWhiteSpace(rental.PaidByStaffName)
                     ? rental.PaidByStaffName
-                    : (!string.IsNullOrWhiteSpace(rental.RecordedBy) ? rental.RecordedBy : (rental.NguoiThanhToanId == 0 ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(rental.ThoiGianThanhToan ?? rental.ActualReturnDate ?? rental.RentalDate))));
+                    : (!string.IsNullOrWhiteSpace(rental.RecordedBy) ? rental.RecordedBy : (rental.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(rental.ThoiGianThanhToan ?? rental.ActualReturnDate ?? rental.RentalDate))));
 
             TxtInvoiceCode.Text = rental.RentalCode;
             TxtCustomerName.Text = !string.IsNullOrWhiteSpace(rental.CustomerName) ? rental.CustomerName : "Khách thuê xe";
@@ -406,13 +407,13 @@ namespace QuanLyDichVuKhachSan.Views
             string roomStr = string.IsNullOrWhiteSpace(booking.RoomNumber) ? "Khách ngoài" : $"Phòng {DataService.NormalizeRoomNumber(booking.RoomNumber)}";
             string creator = !string.IsNullOrWhiteSpace(booking.RecordedBy) && booking.RecordedBy != "Lễ Tân Trực Chính"
                 ? booking.RecordedBy 
-                : (booking.NguoiTaoId == 0 ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(booking.CreatedAt));
+                : (booking.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(booking.CreatedAt));
 
             string cashier = (booking.PaymentStatus == "Ghi nợ vào phòng" || (!booking.DaThanhToan && !string.IsNullOrWhiteSpace(booking.RoomNumber)))
                 ? "Ghi nợ phòng (Chờ thanh toán khi Check-out)"
                 : (!string.IsNullOrWhiteSpace(booking.PaidByStaffName)
                     ? booking.PaidByStaffName
-                    : (!string.IsNullOrWhiteSpace(booking.RecordedBy) ? booking.RecordedBy : (booking.NguoiThanhToanId == 0 ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(booking.ThoiGianThanhToan ?? booking.EndTime))));
+                    : (!string.IsNullOrWhiteSpace(booking.RecordedBy) ? booking.RecordedBy : (booking.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(booking.ThoiGianThanhToan ?? booking.EndTime))));
 
             TxtInvoiceCode.Text = booking.BookingCode;
             TxtCustomerName.Text = !string.IsNullOrWhiteSpace(booking.CustomerName) ? booking.CustomerName : "Khách đặt sự kiện";
@@ -474,13 +475,13 @@ namespace QuanLyDichVuKhachSan.Views
             string roomStr = string.IsNullOrWhiteSpace(order.RoomNumber) ? "Khách vãng lai" : $"Phòng {DataService.NormalizeRoomNumber(order.RoomNumber)}";
             string creator = !string.IsNullOrWhiteSpace(order.RecordedBy) && order.RecordedBy != "Lễ Tân Trực Chính"
                 ? order.RecordedBy 
-                : (order.NguoiTaoId == 0 ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(order.ReceivedDate));
+                : (order.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(order.ReceivedDate));
 
             string cashier = !order.DaThanhToan && !string.IsNullOrWhiteSpace(order.RoomNumber)
                 ? ""
                 : (!string.IsNullOrWhiteSpace(order.PaidByStaffName)
                     ? order.PaidByStaffName
-                    : (!string.IsNullOrWhiteSpace(order.RecordedBy) ? order.RecordedBy : (order.NguoiThanhToanId == 0 ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(order.ThoiGianThanhToan ?? order.ReceivedDate))));
+                    : (!string.IsNullOrWhiteSpace(order.RecordedBy) ? order.RecordedBy : (order.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(order.ThoiGianThanhToan ?? order.ReceivedDate))));
 
             TxtInvoiceCode.Text = order.OrderCode;
             TxtCustomerName.Text = !string.IsNullOrWhiteSpace(order.CustomerName) ? order.CustomerName : "Khách gửi giặt";
@@ -508,14 +509,14 @@ namespace QuanLyDichVuKhachSan.Views
             string roomStr = string.IsNullOrWhiteSpace(record.RoomNumber) ? "Khách vãng lai" : $"Phòng {DataService.NormalizeRoomNumber(record.RoomNumber)}";
             string creator = !string.IsNullOrWhiteSpace(record.RecordedBy) && record.RecordedBy != "Lễ Tân Trực Chính"
                 ? record.RecordedBy 
-                : (record.NguoiTaoId == 0 ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(record.CheckInTime));
+                : (record.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(record.CheckInTime));
 
             string cashier = record.ChargeType == ParkingChargeType.ResidentFree
                 ? "Miễn phí (Khách phòng)"
                 : (record.DaThanhToan 
                     ? (!string.IsNullOrWhiteSpace(record.PaidByStaffName)
                         ? record.PaidByStaffName
-                        : (!string.IsNullOrWhiteSpace(record.RecordedBy) ? record.RecordedBy : (record.NguoiThanhToanId == 0 ? "Chủ khách sạn" : DataService.Instance.GetCurrentDutyStaffName(record.ThoiGianThanhToan ?? record.CheckInTime))))
+                        : (!string.IsNullOrWhiteSpace(record.RecordedBy) ? record.RecordedBy : (record.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(record.ThoiGianThanhToan ?? record.CheckInTime))))
                     : "");
 
             TxtInvoiceCode.Text = record.TicketCode;

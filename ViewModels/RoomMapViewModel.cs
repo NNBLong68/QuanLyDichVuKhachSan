@@ -645,6 +645,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 ServicesCost = unpaidServicesCost,
                 TotalAmount = roomCost + unpaidServicesCost,
                 IssuedBy = Data.GetCurrentDutyStaffName(),
+                PaidBy = Data.GetCurrentDutyStaffName(),
                 PaidItems = unpaidItems
             };
 

@@ -403,7 +403,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
         }
 
-        public string CreatorStaffDisplay => Auth.IsAdmin ? "Chủ khách sạn" : Data.GetCurrentDutyStaffName(DateTime.Now);
+        public string CreatorStaffDisplay => Auth.IsAdmin ? "Chủ khách sạn (Admin)" : Data.GetCurrentDutyStaffName(DateTime.Now);
 
         private void NotifyPaymentCalculationChanged()
         {

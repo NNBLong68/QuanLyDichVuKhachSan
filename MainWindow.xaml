@@ -68,8 +68,9 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- User Profile & Logout & Sync -->
+                    <!-- User Profile & Sync & Fullscreen -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- 1. Làm Mới -->
                         <Button Command="{Binding SyncDatabaseCommand}" 
                                 IsEnabled="{Binding IsBusy, Converter={StaticResource InvBool}}"
                                 Content="🔄 Làm Mới" 
@@ -80,32 +81,35 @@
                                 FontSize="12" 
                                 Margin="0,0,12,0"/>
 
-                        <!-- Nút Bật/Tắt Toàn Màn Hình (Alt + Enter) -->
-                        <Button x:Name="BtnFullScreen" 
-                                Click="BtnFullScreen_Click"
-                                Content="⛶ Toàn Màn Hình" 
-                                ToolTip="Bật/Tắt toàn màn hình không có thanh tiêu đề Windows (Phím tắt: Alt + Enter hoặc F11)" 
-                                Style="{StaticResource PrimaryButton}"
-                                Background="#334155"
-                                Foreground="White"
-                                Height="34" 
-                                Padding="12,0"
-                                FontSize="12" 
-                                Margin="0,0,12,0"/>
-
-                        <!-- User Role Badge (Right click for Admin to open Account Management) -->
+                        <!-- 2. Admin / Lễ Tân (Chuột phải để Đăng xuất) -->
                         <Border Background="{Binding RoleBadgeBackground}" 
                                 CornerRadius="14" 
                                 Padding="14,6" 
                                 Margin="0,0,12,0"
-                                ToolTip="Tài khoản đang đăng nhập">
+                                Cursor="Hand"
+                                ToolTip="Nhấp chuột phải để Đăng xuất">
+                            <Border.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="🚪 Đăng Xuất" Command="{Binding LogoutCommand}" FontWeight="SemiBold"/>
+                                </ContextMenu>
+                            </Border.ContextMenu>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="🛡️ " FontSize="12" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding CurrentUserRoleDisplay}" FontSize="12" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
 
-                        <Button Command="{Binding LogoutCommand}" Content="🚪 Đăng Xuất" Style="{StaticResource RedButton}" Height="34" FontSize="12"/>
+                        <!-- 3. Toàn Màn Hình (Phím tắt: Alt + Enter, F11; Nhấn ESC để thoát toàn màn hình) -->
+                        <Button x:Name="BtnFullScreen" 
+                                Click="BtnFullScreen_Click"
+                                Content="⛶ Toàn Màn Hình" 
+                                ToolTip="Bật/Tắt toàn màn hình (Phím tắt: Alt + Enter hoặc F11; Nhấn ESC để thoát)" 
+                                Style="{StaticResource PrimaryButton}"
+                                Background="#334155"
+                                Foreground="White"
+                                Height="34" 
+                                Padding="12,0"
+                                FontSize="12"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -127,11 +131,11 @@
 
                         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
                             <StackPanel>
-                                <!-- ROLE BADGE BANNER -->
+                                <!-- CURRENT DUTY STAFF BANNER -->
                                 <Border Background="#1E293B" CornerRadius="8" Padding="10" Margin="0,0,0,16">
                                     <StackPanel>
-                                        <TextBlock Text="VAI TRÒ HIỆN TẠI:" FontSize="10" FontWeight="Bold" Foreground="#94A3B8"/>
-                                        <TextBlock Text="{Binding CurrentUserRoleDisplay}" FontSize="14" FontWeight="Bold" Foreground="#F59E0B" Margin="0,2,0,0"/>
+                                        <TextBlock Text="NHÂN VIÊN TRỰC CA HIỆN TẠI:" FontSize="10" FontWeight="Bold" Foreground="#94A3B8"/>
+                                        <TextBlock Text="{Binding CurrentDutyStaffDisplay}" FontSize="13" FontWeight="Bold" Foreground="#38BDF8" TextWrapping="Wrap" Margin="0,3,0,0"/>
                                     </StackPanel>
                                 </Border>
 
