@@ -19,6 +19,8 @@ namespace QuanLyDichVuKhachSan.Services
         private static DatabaseService? _instance;
         public static DatabaseService Instance => _instance ??= new DatabaseService();
 
+        public string? LastError { get; set; }
+
         private string _connectionString = "";
         public string ConnectionString
         {
@@ -1742,6 +1744,7 @@ namespace QuanLyDichVuKhachSan.Services
             }
             catch (Exception ex)
             {
+                LastError = ex.Message;
                 System.Diagnostics.Debug.WriteLine($"[SQL Error] LoadUsersFromDb: {ex.Message}");
             }
             return list;

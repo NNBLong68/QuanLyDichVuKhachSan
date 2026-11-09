@@ -59,6 +59,11 @@ namespace QuanLyDichVuKhachSan.Services
 
             if (user == null)
             {
+                if (!string.IsNullOrEmpty(DatabaseService.Instance.LastError) && dbUsers.Count == 0)
+                {
+                    errorMessage = $"⚠️ Lỗi kết nối CSDL: {DatabaseService.Instance.LastError}";
+                    return false;
+                }
                 errorMessage = "Tên đăng nhập hoặc mật khẩu không đúng";
                 return false;
             }
