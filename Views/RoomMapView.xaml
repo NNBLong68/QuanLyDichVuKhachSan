@@ -236,8 +236,8 @@
 
                                                             <!-- Room Body: Customer Name & Phone -->
                                                             <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,4">
-                                                                <TextBlock Text="{Binding CustomerName}" FontSize="13" FontWeight="Bold" Foreground="#1E293B" TextTrimming="CharacterEllipsis"/>
-                                                                <TextBlock Text="{Binding PhoneNumber}" FontSize="11.5" FontWeight="SemiBold" Foreground="#64748B" Margin="0,2,0,0"/>
+                                                                <TextBlock Text="{Binding CustomerName}" FontSize="13" FontWeight="Bold" Foreground="#1E293B" TextTrimming="CharacterEllipsis" ToolTip="{Binding CustomerName}"/>
+                                                                <TextBlock Text="{Binding PhoneNumber}" FontSize="11.5" FontWeight="SemiBold" Foreground="#64748B" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding PhoneNumber}"/>
                                                             </StackPanel>
 
                                                             <!-- Room Footer: Status Label & Service Count -->
