@@ -48,7 +48,7 @@ namespace QuanLyDichVuKhachSan.Views
                 return;
             }
 
-            string rateStr = TxtHourlyRate.Text.Replace(",", "").Replace(".", "").Trim();
+            string rateStr = TxtHourlyRate.Text.Trim();
             if (!decimal.TryParse(rateStr, out var rate) || rate <= 0)
             {
                 MessageBox.Show("Giá thuê theo giờ phải lớn hơn 0!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -70,13 +70,7 @@ namespace QuanLyDichVuKhachSan.Views
                 status = st;
             }
 
-            string statusStr = status switch
-            {
-                SpaceStatus.Rented => "Đang sử dụng",
-                SpaceStatus.Maintenance => "Bảo trì",
-                SpaceStatus.Cleaning => "Đang dọn",
-                _ => "Trống"
-            };
+            string statusStr = status == SpaceStatus.Maintenance ? "Ngừng khai thác" : "Hoạt động";
 
             int newId = 0;
             try
@@ -108,9 +102,8 @@ namespace QuanLyDichVuKhachSan.Views
 
             if (newId <= 0)
             {
-                newId = DataService.Instance.EventSpaces.Count > 0 
-                    ? DataService.Instance.EventSpaces.Max(x => x.Id) + 1 
-                    : 1;
+                MessageBox.Show("Không thể lưu khu vực sự kiện vào CSDL. Vui lòng kiểm tra kết nối và thử lại!", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
 
             var newSpace = new EventSpace

@@ -221,16 +221,27 @@ namespace QuanLyDichVuKhachSan.Views
             TxtCreatorStaff.Text = creator;
             TxtCashierStaff.Text = cashier;
 
-            // Chỉ tính tổng tiền các dịch vụ đã sử dụng
-            TxtGrandTotal.Text = $"{invoice.ServicesCost:N0} đ";
+            TxtGrandTotal.Text = $"{invoice.TotalAmount:N0} đ";
 
-            var items = invoice.PaidItems.Select(x => new InvoiceDisplayItem
+            var items = new List<InvoiceDisplayItem>();
+            if (invoice.RoomCost > 0)
+            {
+                items.Add(new InvoiceDisplayItem
+                {
+                    ServiceCategory = "Tiền phòng",
+                    ServiceName = $"{invoice.StayNights} đêm × {invoice.PricePerNight:N0} đ/đêm",
+                    UsedTime = invoice.CheckInDate ?? invoice.InvoiceDate,
+                    Amount = invoice.RoomCost
+                });
+            }
+
+            items.AddRange(invoice.PaidItems.Select(x => new InvoiceDisplayItem
             {
                 ServiceCategory = x.ServiceCategory,
                 ServiceName = x.ServiceName,
                 UsedTime = x.UsedTime,
                 Amount = x.Amount
-            }).ToList();
+            }));
 
             DgInvoiceItems.ItemsSource = items;
         }

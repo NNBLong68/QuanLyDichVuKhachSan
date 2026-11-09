@@ -1359,6 +1359,7 @@ namespace QuanLyDichVuKhachSan.Models
         public string CreatedBy { get; set; } = "Lễ tân";
         public string PaidBy { get; set; } = "Lễ tân";
         public string Status { get; set; } = "Đã thanh toán";
+        public bool IsPaid { get; set; }
         public object? OriginalObject { get; set; }
 
         public string ServiceBadgeBg => ServiceCategory switch

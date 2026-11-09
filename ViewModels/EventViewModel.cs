@@ -1119,7 +1119,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             string method = isRoomCharge ? "Ghi nợ vào phòng" : (IsBookingBankTransfer ? "Chuyển khoản" : "Tiền mặt");
             string code = $"SK-{DateTime.Now:yyyyMMdd}-{Data.EventBookings.Count + 1:D2}";
             string roomNum = DataService.NormalizeRoomNumber(BookingRoomNumber);
-            decimal actualCollect = IsFullPayment ? EstimatedTotalAmount : DepositAmount;
+            decimal actualCollect = isRoomCharge ? 0 : (IsFullPayment ? EstimatedTotalAmount : DepositAmount);
             string staff = CreatorStaffDisplay;
 
             var booking = new EventBooking
@@ -1136,6 +1136,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 TotalEstimatedAmount = EstimatedTotalAmount,
                 DamageNote = BookingNote?.Trim() ?? "",
                 PaymentMethod = method,
+                InitialPaymentType = isRoomCharge || !IsFullPayment ? "Đặt cọc trước" : "Thanh toán toàn bộ",
                 DaThanhToan = !isRoomCharge && IsFullPayment,
                 PaymentStatus = isRoomCharge ? "Ghi nợ vào phòng" : (IsFullPayment ? "Đã thanh toán full" : "Đã cọc"),
                 RecordedBy = staff,

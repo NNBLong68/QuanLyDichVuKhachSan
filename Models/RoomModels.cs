@@ -181,12 +181,12 @@ namespace QuanLyDichVuKhachSan.Models
 
         public bool IsOccupied => Status == RoomStatus.Occupied;
         public bool IsReserved => Status == RoomStatus.Reserved;
-        public bool CanCheckIn => Status == RoomStatus.Available || Status == RoomStatus.Cleaning || Status == RoomStatus.Reserved;
+        public bool CanCheckIn => Status == RoomStatus.Available || Status == RoomStatus.Reserved;
         public bool CanCheckOut => Status == RoomStatus.Occupied;
         public bool IsMaintenance => Status == RoomStatus.Maintenance;
         public bool IsCleaning => Status == RoomStatus.Cleaning;
         public bool CanSetMaintenance => Status != RoomStatus.Occupied && Status != RoomStatus.Maintenance;
-        public bool CanSetCleaning => Status != RoomStatus.Cleaning && Status != RoomStatus.Maintenance;
+        public bool CanSetCleaning => Status == RoomStatus.Available || Status == RoomStatus.Cleaning;
 
         public string StatusDisplay => Status switch
         {
@@ -365,6 +365,7 @@ namespace QuanLyDichVuKhachSan.Models
 
     public class RoomInvoice
     {
+        public int Id { get; set; }
         public string InvoiceCode { get; set; } = string.Empty;
         public string RoomNumber { get; set; } = string.Empty;
         public string CustomerName { get; set; } = string.Empty;

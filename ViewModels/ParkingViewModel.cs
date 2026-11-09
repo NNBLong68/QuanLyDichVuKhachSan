@@ -159,6 +159,12 @@ namespace QuanLyDichVuKhachSan.ViewModels
             {
                 if (SetProperty(ref _selectedRecord, value))
                 {
+                    if (value != null)
+                    {
+                        // Mặc định giờ ra là thời điểm quyết toán, không lấy thời điểm mở app.
+                        _actualOutTime = DateTime.Now;
+                        OnPropertyChanged(nameof(ActualOutTime));
+                    }
                     CalculateReturnFee();
                     OnPropertyChanged(nameof(HasSelectedRecord));
                 }
@@ -330,6 +336,10 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
 
             var record = SelectedRecord;
+            if (ActualOutTime < record.CheckInTime)
+            {
+                ActualOutTime = DateTime.Now;
+            }
             DateTime outTime = ActualOutTime;
             decimal fee = CalculatedAmount;
 

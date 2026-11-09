@@ -132,7 +132,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 }
             });
 
-            PayAndExportBillCommand = new RelayCommand(PayAndExportBill);
+            PayAndExportBillCommand = new RelayCommand(_ => PayAndExportBill(false));
             RefreshServicesCommand = new RelayCommand(LoadServicesForSelectedRoom);
 
             ViewServiceDetailCommand = new RelayCommand(param =>
@@ -280,6 +280,12 @@ namespace QuanLyDichVuKhachSan.ViewModels
                         return;
                     }
 
+                    if (room.Status == RoomStatus.Cleaning)
+                    {
+                        MessageBox.Show($"Phòng {room.RoomNumber} chưa dọn dẹp xong, vui lòng hoàn tất dọn phòng trước khi nhận khách!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+
                     // Mở bảng đăng ký khách nhận phòng
                     var checkInDialog = new Views.CheckInDialogWindow(room);
                     if (checkInDialog.ShowDialog() == true && checkInDialog.IsConfirmed)
@@ -356,20 +362,15 @@ namespace QuanLyDichVuKhachSan.ViewModels
                         return;
                     }
 
-                    // 1. Kiểm tra các khoản dịch vụ chưa thanh toán -> Mở trực tiếp bảng Hóa Đơn (Bill) không cần hiện bảng hỏi
-                    var unpaid = Data.GetServicesForRoom(room.RoomNumber).Where(x => !x.IsPaid).ToList();
-                    if (unpaid.Count > 0)
-                    {
-                        SelectedRoom = room;
-                        LoadServicesForSelectedRoom();
-                        NotifyAllStateChanges();
+                    // Luôn lập hóa đơn quyết toán (tiền phòng + dịch vụ) trước khi trả phòng.
+                    SelectedRoom = room;
+                    LoadServicesForSelectedRoom();
+                    NotifyAllStateChanges();
 
-                        // Mở thẳng bảng Hóa Đơn / Bill thanh toán luôn
-                        PayAndExportBill();
+                    if (!PayAndExportBill(true))
                         return;
-                    }
 
-                    // 2. Khi đã thanh toán hết 100% dịch vụ (hoặc tổng dịch vụ chưa thanh toán = 0) -> Cho phép trả phòng và chuyển sang dọn dẹp
+                    // Thanh toán thành công -> trả phòng và chuyển sang dọn dẹp
                     room.Status = RoomStatus.Cleaning;
                     room.CustomerName = "";
                     room.PhoneNumber = "";
@@ -384,7 +385,8 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
                     // Đồng bộ ngầm trạng thái xuống CSDL SQL Server (Non-blocking)
                     _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                        "UPDATE PhongKhachSan SET TrangThai = N'Đang dọn', TenKhach = NULL, SoDienThoai = NULL, CCCD = NULL, NgayNhanPhong = NULL, NgayTraPhong = NULL, GhiChu = @Note WHERE SoPhong = @Phong",
+                        "UPDATE PhongKhachSan SET TrangThai = N'Đang dọn', TenKhach = NULL, SoDienThoai = NULL, CCCD = NULL, NgayNhanPhong = NULL, NgayTraPhong = NULL, GhiChu = @Note WHERE SoPhong = @Phong; " +
+                        "UPDATE KhachHang SET SoPhong = NULL WHERE SoPhong = @Phong;",
                         new Microsoft.Data.SqlClient.SqlParameter("@Phong", room.RoomNumber),
                         new Microsoft.Data.SqlClient.SqlParameter("@Note", room.Note)
                     );
@@ -395,6 +397,12 @@ namespace QuanLyDichVuKhachSan.ViewModels
             {
                 if (param is HotelRoom room)
                 {
+                    if (room.Status == RoomStatus.Occupied)
+                    {
+                        MessageBox.Show($"Phòng {room.RoomNumber} đang có khách. Vui lòng trả phòng trước khi chuyển sang dọn dẹp!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+
                     room.Status = RoomStatus.Cleaning;
                     room.Note = "Đang dọn dẹp và thay mới đồ dùng";
                     SelectedRoom = room;
@@ -501,6 +509,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             OnPropertyChanged(nameof(TotalPaidAmount));
             OnPropertyChanged(nameof(TotalServiceAmount));
             OnPropertyChanged(nameof(HasUnpaidServices));
+            Data.RefreshAvailableRoomNumbers();
         }
 
         public void ApplyFilter()
@@ -602,28 +611,27 @@ namespace QuanLyDichVuKhachSan.ViewModels
             OnPropertyChanged(nameof(HasUnpaidServices));
         }
 
-        private void PayAndExportBill()
+        private bool PayAndExportBill(bool includeRoomCharge)
         {
             if (SelectedRoom == null)
             {
-                MessageBox.Show("Vui lòng chọn một phòng để thanh toán dịch vụ!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                MessageBox.Show("Vui lòng chọn một phòng để thanh toán!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
             }
 
-            if (!HasUnpaidServices)
-            {
-                MessageBox.Show($"Phòng {SelectedRoom.RoomNumber} hiện không có khoản dịch vụ nào chưa thanh toán!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            // 1. Lấy danh sách dịch vụ chưa thanh toán để lập bản xem trước hóa đơn
             var unpaidItems = CurrentRoomServices.Where(x => !x.IsPaid).ToList();
             decimal unpaidServicesCost = unpaidItems.Sum(x => x.Amount);
+            decimal roomCost = includeRoomCharge ? SelectedRoom.TotalRoomCost : 0;
 
-            // 2. Khởi tạo đối tượng Hóa đơn dịch vụ (RoomInvoice)
+            if (!includeRoomCharge && unpaidItems.Count == 0)
+            {
+                MessageBox.Show($"Phòng {SelectedRoom.RoomNumber} hiện không có khoản dịch vụ nào chưa thanh toán!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                return false;
+            }
+
             var invoice = new RoomInvoice
             {
-                InvoiceCode = $"HD-KS-{DateTime.Now:yyyyMMdd}-{SelectedRoom.RoomNumber.Replace(".", "")}",
+                InvoiceCode = $"HD-KS-{DateTime.Now:yyyyMMddHHmmss}-{SelectedRoom.RoomNumber.Replace(".", "")}",
                 RoomNumber = $"{SelectedRoom.RoomNumber} ({SelectedRoom.RoomType})",
                 CustomerName = string.IsNullOrEmpty(SelectedRoom.CustomerName) ? "Khách lưu trú" : SelectedRoom.CustomerName,
                 PhoneNumber = SelectedRoom.PhoneNumber,
@@ -633,30 +641,33 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 CheckOutDate = SelectedRoom.ExpectedCheckOutDate ?? DateTime.Now,
                 StayNights = SelectedRoom.StayNights,
                 PricePerNight = SelectedRoom.PricePerNight,
-                RoomCost = 0,
+                RoomCost = roomCost,
                 ServicesCost = unpaidServicesCost,
-                TotalAmount = unpaidServicesCost,
+                TotalAmount = roomCost + unpaidServicesCost,
                 IssuedBy = Data.GetCurrentDutyStaffName(),
                 PaidItems = unpaidItems
             };
 
-            // 3. Mở trực tiếp cửa sổ Hóa đơn / Bill
             var billWindow = new InvoiceBillWindow(invoice);
             bool? dialogResult = billWindow.ShowDialog();
 
-            // 4. CHỈ LƯU VÀO DATABASE VÀ ĐỔI TRẠNG THÁI KHI NGƯỜI DÙNG BẤM "ĐÓNG & HOÀN TẤT"
             if (dialogResult == true || billWindow.IsConfirmed)
             {
-                var payResult = Data.PayRoomServices(SelectedRoom.RoomNumber);
+                var payResult = Data.PayRoomServices(SelectedRoom.RoomNumber, includeRoomCharge);
+                if (!payResult.Success)
+                {
+                    MessageBox.Show("Không thể xác nhận thanh toán với SQL Server. Vui lòng kiểm tra kết nối và thử lại!", "Lỗi thanh toán", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return false;
+                }
+
                 LoadServicesForSelectedRoom();
                 NotifyAllStateChanges();
+                return true;
             }
-            else
-            {
-                // Nếu bấm nút HỦY hoặc dấu X: Giữ nguyên trạng thái chưa thanh toán
-                LoadServicesForSelectedRoom();
-                NotifyAllStateChanges();
-            }
+
+            LoadServicesForSelectedRoom();
+            NotifyAllStateChanges();
+            return false;
         }
 
         /// <summary>

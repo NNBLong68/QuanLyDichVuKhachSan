@@ -119,6 +119,7 @@ CREATE TABLE PhongKhachSan (
     SoPhong      NVARCHAR(20) NOT NULL UNIQUE,
     Tang         INT NOT NULL,
     LoaiPhong    NVARCHAR(50) NOT NULL,
+    GiaPhong     DECIMAL(18,2) NOT NULL DEFAULT 500000 CHECK (GiaPhong >= 0),
     TrangThai    NVARCHAR(30) NOT NULL DEFAULT N'Trống'
                      CHECK (TrangThai IN (N'Trống', N'Đang ở', N'Đang dọn', N'Bảo trì')),
     TenKhach     NVARCHAR(100) NULL,
@@ -144,6 +145,41 @@ CREATE TABLE KhachHang (
 GO
 CREATE INDEX IX_KhachHang_CCCD ON KhachHang(CCCD);
 CREATE INDEX IX_KhachHang_SDT  ON KhachHang(SoDienThoai);
+GO
+
+-- 2.5b Hóa đơn quyết toán phòng (lưu vết doanh thu tiền phòng + dịch vụ)
+IF OBJECT_ID('ChiTietHoaDon', 'U') IS NOT NULL DROP TABLE ChiTietHoaDon;
+IF OBJECT_ID('HoaDon', 'U') IS NOT NULL DROP TABLE HoaDon;
+GO
+CREATE TABLE HoaDon (
+    Id              INT IDENTITY(1,1) PRIMARY KEY,
+    MaHoaDon        NVARCHAR(50)  NOT NULL UNIQUE,
+    SoPhong         NVARCHAR(20)  NOT NULL,
+    TenKhach        NVARCHAR(100) NULL,
+    SoDienThoai     NVARCHAR(20)  NULL,
+    CCCD            NVARCHAR(20)  NULL,
+    NgayLap         DATETIME      NOT NULL DEFAULT GETDATE(),
+    NgayNhan        DATETIME      NULL,
+    NgayTra         DATETIME      NULL,
+    SoDem           INT           NOT NULL DEFAULT 0,
+    GiaPhong        DECIMAL(18,2) NOT NULL DEFAULT 0,
+    TienPhong       DECIMAL(18,2) NOT NULL DEFAULT 0,
+    TienDichVu      DECIMAL(18,2) NOT NULL DEFAULT 0,
+    TongTien        DECIMAL(18,2) NOT NULL DEFAULT 0,
+    NguoiLap        NVARCHAR(100) NULL,
+    NguoiThu        NVARCHAR(100) NULL
+);
+GO
+CREATE TABLE ChiTietHoaDon (
+    Id              INT IDENTITY(1,1) PRIMARY KEY,
+    HoaDonId        INT           NOT NULL FOREIGN KEY REFERENCES HoaDon(Id) ON DELETE CASCADE,
+    LoaiDichVu      NVARCHAR(50)  NULL,
+    TenDichVu       NVARCHAR(200) NULL,
+    ThoiGian        DATETIME      NULL,
+    SoTien          DECIMAL(18,2) NOT NULL DEFAULT 0
+);
+GO
+CREATE INDEX IX_HoaDon_SoPhong_NgayLap ON HoaDon(SoPhong, NgayLap);
 GO
 
 -- 2.6 Nhà cung cấp, Món ăn minibar, Nhập kho
@@ -559,7 +595,7 @@ GO
 CREATE VIEW vw_DichVuChuaThanhToanTheoPhong AS
 SELECT SoPhong, N'Ẩm thực' AS LoaiDichVu, MaDon, TongTien AS SoTien, NgayTao AS ThoiGian
 FROM DonHangMonAn
-WHERE DaThanhToan = 0 AND (HinhThucThanhToan = N'Ghi nợ vào phòng' OR HinhThucThanhToan = N'Tính chung tiền phòng')
+WHERE DaThanhToan = 0 AND TrangThai <> N'Đã hủy' AND (HinhThucThanhToan = N'Ghi nợ vào phòng' OR HinhThucThanhToan = N'Tính chung tiền phòng')
 UNION ALL
 SELECT SoPhong, N'Sự kiện', MaDon, (TongTienDuKien + ChiPhiPhatSinh - TienCoc), NgayTao
 FROM DonDatSuKien
@@ -567,11 +603,13 @@ FROM DonDatSuKien
 -- phòng vệ 2 lớp, tránh đơn hủy "Không hoàn cọc" bị tính nhầm vào công nợ phòng)
 WHERE DaThanhToan = 0 AND SoPhong IS NOT NULL
   AND TrangThaiDon NOT IN (N'Đã hủy - Hoàn cọc', N'Đã hủy - Không hoàn cọc')
+  AND ThoiGianBatDau <= GETDATE()
 UNION ALL
 SELECT SoPhong, N'Thuê xe', MaDon, (TienThue + ChiPhiPhatSinh - TienCoc), NgayTao
 FROM DonThueXe
 WHERE DaThanhToan = 0 AND SoPhong IS NOT NULL
   AND TrangThaiDon NOT IN (N'Đã hủy - Hoàn cọc', N'Đã hủy - Không hoàn cọc')
+  AND NgayThue <= GETDATE()
 UNION ALL
 SELECT SoPhong, N'Bãi đỗ xe', MaVe, PhiGui, ThoiGianVao
 FROM BaiDoXe
@@ -587,13 +625,13 @@ IF OBJECT_ID('vw_DoanhThuTheoDichVu', 'V') IS NOT NULL DROP VIEW vw_DoanhThuTheo
 GO
 CREATE VIEW vw_DoanhThuTheoDichVu AS
 SELECT N'Ăn Uống' AS TenDichVu, COUNT(Id) AS SoGiaoDich, ISNULL(SUM(TongTien),0) AS DoanhThu, NgayTao AS Ngay
-FROM DonHangMonAn WHERE DaThanhToan = 1 GROUP BY NgayTao
+FROM DonHangMonAn WHERE DaThanhToan = 1 AND TrangThai <> N'Đã hủy' GROUP BY NgayTao
 UNION ALL
 SELECT N'Sảnh & Sự Kiện', COUNT(Id), ISNULL(SUM(TongTienDuKien + ChiPhiPhatSinh),0), NgayTao
-FROM DonDatSuKien WHERE DaThanhToan = 1 GROUP BY NgayTao
+FROM DonDatSuKien WHERE DaThanhToan = 1 AND TrangThaiDon NOT LIKE N'Đã hủy%' GROUP BY NgayTao
 UNION ALL
 SELECT N'Cho Thuê Xe Máy', COUNT(Id), ISNULL(SUM(TienThue + ChiPhiPhatSinh),0), NgayTao
-FROM DonThueXe WHERE DaThanhToan = 1 GROUP BY NgayTao
+FROM DonThueXe WHERE DaThanhToan = 1 AND TrangThaiDon NOT LIKE N'Đã hủy%' GROUP BY NgayTao
 UNION ALL
 SELECT N'Bãi & Hầm Đỗ Xe', COUNT(Id), ISNULL(SUM(PhiGui),0), ThoiGianVao
 FROM BaiDoXe WHERE DaThanhToan = 1 AND PhiGui > 0 GROUP BY ThoiGianVao
@@ -966,13 +1004,18 @@ BEGIN
         DECLARE @Now DATETIME = GETDATE();
 
         UPDATE DonHangMonAn SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
-        WHERE SoPhong = @SoPhong AND DaThanhToan = 0 AND (HinhThucThanhToan = N'Ghi nợ vào phòng' OR HinhThucThanhToan = N'Tính chung tiền phòng');
+        WHERE SoPhong = @SoPhong AND DaThanhToan = 0 AND TrangThai <> N'Đã hủy'
+          AND (HinhThucThanhToan = N'Ghi nợ vào phòng' OR HinhThucThanhToan = N'Tính chung tiền phòng');
 
         UPDATE DonDatSuKien SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
-        WHERE SoPhong = @SoPhong AND DaThanhToan = 0;
+        WHERE SoPhong = @SoPhong AND DaThanhToan = 0
+          AND TrangThaiDon NOT IN (N'Đã hủy - Hoàn cọc', N'Đã hủy - Không hoàn cọc')
+          AND ThoiGianBatDau <= @Now;
 
         UPDATE DonThueXe SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
-        WHERE SoPhong = @SoPhong AND DaThanhToan = 0;
+        WHERE SoPhong = @SoPhong AND DaThanhToan = 0
+          AND TrangThaiDon NOT IN (N'Đã hủy - Hoàn cọc', N'Đã hủy - Không hoàn cọc')
+          AND NgayThue <= @Now;
 
         UPDATE BaiDoXe SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
         WHERE SoPhong = @SoPhong AND DaThanhToan = 0;
@@ -2114,6 +2157,9 @@ INSERT INTO PhongKhachSan (SoPhong, Tang, LoaiPhong, TrangThai, TenKhach, SoDien
 ('502', 5, N'Phòng đơn', N'Đang ở',   N'Lê Thị Ngọc Ánh',   '0979334455', '079185002345', N'Khách ở 1 tuần từ hôm nay, thuê xe Sirius', GETDATE(), DATEADD(DAY,7,GETDATE())),
 ('503', 5, N'Phòng đôi', N'Đang dọn', NULL,                 NULL,         NULL,           N'Đang thay ga trải giường', NULL, NULL),
 ('504', 5, N'Phòng đơn', N'Trống',    NULL,                 NULL,         NULL,           NULL, NULL, NULL);
+GO
+UPDATE PhongKhachSan
+SET GiaPhong = CASE WHEN LoaiPhong = N'Phòng đôi' THEN 800000 ELSE 500000 END;
 GO
 
 -- 6.8 Nhà cung cấp

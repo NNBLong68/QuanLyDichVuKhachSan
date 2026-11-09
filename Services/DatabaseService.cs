@@ -282,6 +282,7 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
+                EnsureRoomPriceColumn(conn);
                 string query = "SELECT * FROM PhongKhachSan ORDER BY Tang, SoPhong";
                 using var cmd = new SqlCommand(query, conn);
                 using var reader = cmd.ExecuteReader();
@@ -290,6 +291,11 @@ namespace QuanLyDichVuKhachSan.Services
                 {
                     string roomNum = SafeGetString(reader, "SoPhong", "RoomNumber");
                     if (string.IsNullOrWhiteSpace(roomNum)) continue;
+
+                    string roomType = SafeGetString(reader, "LoaiPhong", "RoomType");
+                    decimal roomPrice = SafeGetDecimal(reader, "GiaPhong", "PricePerNight");
+                    if (roomPrice <= 0)
+                        roomPrice = roomType.Contains("đôi", StringComparison.OrdinalIgnoreCase) ? 800000m : 500000m;
 
                     string statusStr = SafeGetString(reader, "TrangThai", "Status");
                     RoomStatus status = RoomStatus.Available;
@@ -306,6 +312,7 @@ namespace QuanLyDichVuKhachSan.Services
                         RoomNumber = roomNum,
                         Floor = SafeGetInt(reader, "Tang", "Floor"),
                         RoomType = SafeGetString(reader, "LoaiPhong", "RoomType"),
+                        PricePerNight = roomPrice,
                         Status = status,
                         CustomerName = SafeGetString(reader, "TenKhach", "CustomerName"),
                         PhoneNumber = SafeGetString(reader, "SoDienThoai", "PhoneNumber", "Phone"),
@@ -321,6 +328,192 @@ namespace QuanLyDichVuKhachSan.Services
                 System.Diagnostics.Debug.WriteLine($"[SQL Error] LoadRoomsFromDb: {ex.Message}");
             }
             return dict.Values.ToList();
+        }
+
+        private static bool _invoiceTablesChecked = false;
+
+        private static void EnsureInvoiceTables(SqlConnection conn)
+        {
+            if (_invoiceTablesChecked) return;
+            try
+            {
+                string ddl = @"
+                    IF OBJECT_ID('HoaDon', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE HoaDon (
+                            Id              INT IDENTITY(1,1) PRIMARY KEY,
+                            MaHoaDon        NVARCHAR(50)  NOT NULL UNIQUE,
+                            SoPhong         NVARCHAR(20)  NOT NULL,
+                            TenKhach        NVARCHAR(100) NULL,
+                            SoDienThoai     NVARCHAR(20)  NULL,
+                            CCCD            NVARCHAR(20)  NULL,
+                            NgayLap         DATETIME      NOT NULL DEFAULT GETDATE(),
+                            NgayNhan        DATETIME      NULL,
+                            NgayTra         DATETIME      NULL,
+                            SoDem           INT           NOT NULL DEFAULT 0,
+                            GiaPhong        DECIMAL(18,2) NOT NULL DEFAULT 0,
+                            TienPhong       DECIMAL(18,2) NOT NULL DEFAULT 0,
+                            TienDichVu      DECIMAL(18,2) NOT NULL DEFAULT 0,
+                            TongTien        DECIMAL(18,2) NOT NULL DEFAULT 0,
+                            NguoiLap        NVARCHAR(100) NULL,
+                            NguoiThu        NVARCHAR(100) NULL
+                        );
+                        CREATE INDEX IX_HoaDon_SoPhong_NgayLap ON HoaDon(SoPhong, NgayLap);
+                    END;
+                    IF OBJECT_ID('ChiTietHoaDon', 'U') IS NULL
+                    BEGIN
+                        CREATE TABLE ChiTietHoaDon (
+                            Id              INT IDENTITY(1,1) PRIMARY KEY,
+                            HoaDonId        INT           NOT NULL FOREIGN KEY REFERENCES HoaDon(Id) ON DELETE CASCADE,
+                            LoaiDichVu      NVARCHAR(50)  NULL,
+                            TenDichVu       NVARCHAR(200) NULL,
+                            ThoiGian        DATETIME      NULL,
+                            SoTien          DECIMAL(18,2) NOT NULL DEFAULT 0
+                        );
+                    END";
+                using var cmd = new SqlCommand(ddl, conn);
+                cmd.ExecuteNonQuery();
+                _invoiceTablesChecked = true;
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Lưu hóa đơn quyết toán phòng (tiền phòng + dịch vụ) xuống CSDL.
+        /// </summary>
+        public bool SaveInvoice(RoomInvoice invoice)
+        {
+            if (invoice == null) return false;
+            try
+            {
+                using var conn = new SqlConnection(ConnectionString);
+                conn.Open();
+                EnsureInvoiceTables(conn);
+                using var transaction = conn.BeginTransaction();
+
+                string roomNumber = invoice.RoomNumber;
+                int bracketIndex = roomNumber.IndexOf(" (", StringComparison.Ordinal);
+                if (bracketIndex > 0) roomNumber = roomNumber.Substring(0, bracketIndex).Trim();
+
+                int invoiceId;
+                using (var cmd = new SqlCommand(@"
+                    INSERT INTO HoaDon (MaHoaDon, SoPhong, TenKhach, SoDienThoai, CCCD, NgayLap, NgayNhan, NgayTra, SoDem, GiaPhong, TienPhong, TienDichVu, TongTien, NguoiLap, NguoiThu)
+                    OUTPUT INSERTED.Id
+                    VALUES (@Ma, @Phong, @Ten, @SDT, @CCCD, @NgayLap, @NgayNhan, @NgayTra, @SoDem, @Gia, @TienPhong, @TienDV, @Tong, @NguoiLap, @NguoiThu)", conn, transaction))
+                {
+                    cmd.Parameters.AddWithValue("@Ma", invoice.InvoiceCode);
+                    cmd.Parameters.AddWithValue("@Phong", roomNumber);
+                    cmd.Parameters.AddWithValue("@Ten", (object?)invoice.CustomerName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SDT", (object?)invoice.PhoneNumber ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@CCCD", (object?)invoice.IdentityCard ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@NgayLap", invoice.InvoiceDate);
+                    cmd.Parameters.AddWithValue("@NgayNhan", (object?)invoice.CheckInDate ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@NgayTra", (object?)invoice.CheckOutDate ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SoDem", invoice.StayNights);
+                    cmd.Parameters.AddWithValue("@Gia", invoice.PricePerNight);
+                    cmd.Parameters.AddWithValue("@TienPhong", invoice.RoomCost);
+                    cmd.Parameters.AddWithValue("@TienDV", invoice.ServicesCost);
+                    cmd.Parameters.AddWithValue("@Tong", invoice.TotalAmount);
+                    cmd.Parameters.AddWithValue("@NguoiLap", (object?)invoice.IssuedBy ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@NguoiThu", (object?)invoice.PaidBy ?? DBNull.Value);
+                    invoiceId = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+
+                if (invoice.PaidItems != null)
+                {
+                    foreach (var item in invoice.PaidItems)
+                    {
+                        using var cmd = new SqlCommand(@"
+                            INSERT INTO ChiTietHoaDon (HoaDonId, LoaiDichVu, TenDichVu, ThoiGian, SoTien)
+                            VALUES (@HoaDonId, @Loai, @Ten, @ThoiGian, @SoTien)", conn, transaction);
+                        cmd.Parameters.AddWithValue("@HoaDonId", invoiceId);
+                        cmd.Parameters.AddWithValue("@Loai", (object?)item.ServiceCategory ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@Ten", (object?)item.ServiceName ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ThoiGian", (object?)item.UsedTime ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@SoTien", item.Amount);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                transaction.Commit();
+                invoice.Id = invoiceId;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SQL Error] SaveInvoice: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Nạp lại lịch sử hóa đơn quyết toán phòng từ CSDL.
+        /// </summary>
+        public List<RoomInvoice> LoadInvoicesFromDb()
+        {
+            var list = new List<RoomInvoice>();
+            try
+            {
+                using var conn = new SqlConnection(ConnectionString);
+                conn.Open();
+                EnsureInvoiceTables(conn);
+
+                var map = new Dictionary<int, RoomInvoice>();
+                using (var cmd = new SqlCommand("SELECT * FROM HoaDon ORDER BY NgayLap DESC, Id DESC", conn))
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int id = SafeGetInt(reader, "Id");
+                        var invoice = new RoomInvoice
+                        {
+                            Id = id,
+                            InvoiceCode = SafeGetString(reader, "MaHoaDon"),
+                            RoomNumber = SafeGetString(reader, "SoPhong"),
+                            CustomerName = SafeGetString(reader, "TenKhach"),
+                            PhoneNumber = SafeGetString(reader, "SoDienThoai"),
+                            IdentityCard = SafeGetString(reader, "CCCD"),
+                            InvoiceDate = SafeGetNullableDateTime(reader, "NgayLap") ?? DateTime.Now,
+                            CheckInDate = SafeGetNullableDateTime(reader, "NgayNhan"),
+                            CheckOutDate = SafeGetNullableDateTime(reader, "NgayTra"),
+                            StayNights = SafeGetInt(reader, "SoDem"),
+                            PricePerNight = SafeGetDecimal(reader, "GiaPhong"),
+                            RoomCost = SafeGetDecimal(reader, "TienPhong"),
+                            ServicesCost = SafeGetDecimal(reader, "TienDichVu"),
+                            TotalAmount = SafeGetDecimal(reader, "TongTien"),
+                            IssuedBy = SafeGetString(reader, "NguoiLap"),
+                            PaidBy = SafeGetString(reader, "NguoiThu"),
+                            PaidItems = new List<RoomServiceUsageItem>()
+                        };
+                        map[id] = invoice;
+                        list.Add(invoice);
+                    }
+                }
+
+                using (var cmd = new SqlCommand("SELECT * FROM ChiTietHoaDon ORDER BY Id", conn))
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int invoiceId = SafeGetInt(reader, "HoaDonId");
+                        if (!map.TryGetValue(invoiceId, out var invoice)) continue;
+
+                        invoice.PaidItems.Add(new RoomServiceUsageItem
+                        {
+                            ServiceCategory = SafeGetString(reader, "LoaiDichVu"),
+                            ServiceName = SafeGetString(reader, "TenDichVu"),
+                            UsedTime = SafeGetNullableDateTime(reader, "ThoiGian") ?? invoice.InvoiceDate,
+                            Amount = SafeGetDecimal(reader, "SoTien"),
+                            IsPaid = true
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SQL Error] LoadInvoicesFromDb: {ex.Message}");
+            }
+            return list;
         }
 
         /// <summary>
@@ -390,6 +583,39 @@ namespace QuanLyDichVuKhachSan.Services
                 using var cmd = new SqlCommand(ddl, conn);
                 cmd.ExecuteNonQuery();
                 _monAnColumnsChecked = true;
+            }
+            catch { }
+        }
+
+        private static bool _roomPriceChecked = false;
+        private static void EnsureRoomPriceColumn(SqlConnection conn)
+        {
+            if (_roomPriceChecked) return;
+            try
+            {
+                bool exists;
+                using (var check = new SqlCommand(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PhongKhachSan' AND COLUMN_NAME = 'GiaPhong'", conn))
+                {
+                    exists = Convert.ToInt32(check.ExecuteScalar()) > 0;
+                }
+
+                if (!exists)
+                {
+                    using (var alter = new SqlCommand(
+                        "ALTER TABLE PhongKhachSan ADD GiaPhong DECIMAL(18,2) NOT NULL CONSTRAINT DF_PhongKhachSan_GiaPhong DEFAULT 500000", conn))
+                    {
+                        alter.ExecuteNonQuery();
+                    }
+
+                    using (var update = new SqlCommand(
+                        "UPDATE PhongKhachSan SET GiaPhong = CASE WHEN LoaiPhong = N'Phòng đôi' THEN 800000 ELSE 500000 END", conn))
+                    {
+                        update.ExecuteNonQuery();
+                    }
+                }
+
+                _roomPriceChecked = true;
             }
             catch { }
         }
@@ -903,7 +1129,9 @@ namespace QuanLyDichVuKhachSan.Services
                 {
                     string statusStr = SafeGetString(reader, "TrangThai", "Status");
                     SpaceStatus status = SpaceStatus.Available;
-                    if (statusStr.Contains("cho thuê") || statusStr.Equals("Rented", StringComparison.OrdinalIgnoreCase))
+                    if (statusStr.Contains("ngừng") || statusStr.Equals("Inactive", StringComparison.OrdinalIgnoreCase))
+                        status = SpaceStatus.Maintenance;
+                    else if (statusStr.Contains("cho thuê") || statusStr.Equals("Rented", StringComparison.OrdinalIgnoreCase))
                         status = SpaceStatus.Rented;
                     else if (statusStr.Contains("sửa") || statusStr.Contains("bảo trì") || statusStr.Equals("Maintenance", StringComparison.OrdinalIgnoreCase))
                         status = SpaceStatus.Maintenance;
@@ -2093,6 +2321,26 @@ namespace QuanLyDichVuKhachSan.Services
                     return false;
                 }
             });
+        }
+
+        public bool ConfirmRoomPayment(string roomNumber, int staffId)
+        {
+            try
+            {
+                using var conn = new SqlConnection(ConnectionString);
+                conn.Open();
+                using var cmd = new SqlCommand("sp_XacNhanThanhToanDichVuTheoPhong", conn);
+                cmd.CommandType = CommandType.StoredProcedure;
+                cmd.Parameters.AddWithValue("@SoPhong", roomNumber);
+                cmd.Parameters.AddWithValue("@NhanVienThanhToanId", staffId);
+                cmd.ExecuteNonQuery();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[sp_XacNhanThanhToanDichVuTheoPhong Error] {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>

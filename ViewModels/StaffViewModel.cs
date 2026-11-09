@@ -596,13 +596,15 @@ END";
                         SelectedStaffToAssign = Data.StaffList.FirstOrDefault();
                     }
 
-                    // Cập nhật CSDL SQL Server (Hủy ca trực tương lai & cập nhật trạng thái 'Đã nghỉ việc')
-                    _ = DatabaseService.Instance.ExecuteNonQueryAsync(
+                    // Cập nhật CSDL SQL Server (Hủy ca trực tương lai, khóa tài khoản & cập nhật trạng thái 'Đã nghỉ việc')
+                    DatabaseService.Instance.ExecuteNonQueryAsync(
                         "DELETE FROM PhanCongCaTruc WHERE NhanVienId = @Id AND NgayTruc >= CAST(GETDATE() AS DATE); " +
-                        "UPDATE NhanVien SET TrangThai = N'Đã nghỉ việc' WHERE Id = @Id OR MaNV = @Code;",
+                        "UPDATE NhanVien SET TrangThai = N'Đã nghỉ việc' WHERE Id = @Id OR MaNV = @Code; " +
+                        "UPDATE TaiKhoan SET TrangThai = 0 WHERE HoTen = @Name;",
                         new SqlParameter("@Id", staff.Id),
-                        new SqlParameter("@Code", staff.Code)
-                    );
+                        new SqlParameter("@Code", staff.Code),
+                        new SqlParameter("@Name", staff.FullName)
+                    ).GetAwaiter().GetResult();
 
                     RefreshWeeklySchedule();
                     MessageBox.Show($"Đã chuyển trạng thái nhân viên [{staff.FullName}] sang 'Đã nghỉ việc' thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);

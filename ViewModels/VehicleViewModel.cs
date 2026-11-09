@@ -971,7 +971,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             bool isRoomCharge = RentalBillingType == BillingType.ChargeToRoom && CanChooseRentalRoomBill;
             string method = isRoomCharge ? "Ghi nợ vào phòng" : (IsRentalBankTransfer ? "Chuyển khoản" : "Tiền mặt");
-            decimal actualCollect = IsFullPayment ? CalculatedFee : DepositAmount;
+            decimal actualCollect = isRoomCharge ? 0 : (IsFullPayment ? CalculatedFee : DepositAmount);
             string staff = CreatorStaffDisplay;
             string code = $"TX-{DateTime.Now:yyyyMMdd}-{Data.VehicleRentals.Count + 1:D2}";
             TryGetRentalDateTimes(out var start, out var end);
@@ -1011,7 +1011,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 DepositAmount = actualCollect,
                 RentalFee = CalculatedFee,
                 TotalPayment = CalculatedFee,
-                InitialPaymentType = IsFullPayment ? "Thanh toán toàn bộ" : "Đặt cọc trước",
+                InitialPaymentType = isRoomCharge || !IsFullPayment ? "Đặt cọc trước" : "Thanh toán toàn bộ",
                 OrderStatus = orderStatus,
                 PaymentMethod = method,
                 PaymentStatus = isRoomCharge ? "Ghi nợ vào phòng" : (IsFullPayment ? "Đã thanh toán" : "Đã đặt cọc"),

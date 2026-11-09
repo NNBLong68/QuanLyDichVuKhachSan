@@ -89,7 +89,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public ObservableRangeCollection<TransactionRecord> FilteredTransactions { get; } = new();
 
         public int TotalCount => FilteredTransactions.Count;
-        public decimal TotalAmountSum => FilteredTransactions.Sum(x => x.Amount);
+        public decimal TotalAmountSum => FilteredTransactions.Where(x => x.IsPaid).Sum(x => x.Amount);
         public string CurrentDutyStaffDisplay => Auth.IsAdmin ? "Chủ khách sạn (Admin)" : Data.GetCurrentDutyStaffName();
 
         public ICommand RefreshCommand { get; }

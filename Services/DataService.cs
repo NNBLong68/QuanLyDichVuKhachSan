@@ -171,8 +171,17 @@ namespace QuanLyDichVuKhachSan.Services
         /// </summary>
         private void InitializeAndSeedCache()
         {
-            // 1. Quyết toán các giao dịch cũ trong nền (không chặn luồng nạp dữ liệu chính)
-            _ = Task.Run(() => DatabaseService.Instance.AutoSettlePastTransactions());
+            // 0. Bắt buộc phải kết nối được CSDL trước khi nạp dữ liệu.
+            //    Nếu không, các Load...FromDb sẽ nuốt lỗi và trả danh sách rỗng,
+            //    khiến ứng dụng tưởng đã khởi tạo thành công với dữ liệu giả.
+            if (!DatabaseService.Instance.TestConnection())
+                throw new InvalidOperationException(
+                    "Không kết nối được SQL Server. Vui lòng kiểm tra appsettings.json và dịch vụ SQL Server.");
+
+            // 1. Quyết toán dữ liệu cũ chỉ chạy ở chế độ demo/seed có chủ đích.
+            //    Mặc định KHÔNG tự sửa dữ liệu tài chính khi khởi động.
+            if (Environment.GetEnvironmentVariable("QLKS_AUTO_SETTLE_DEMO") == "1")
+                _ = Task.Run(() => DatabaseService.Instance.AutoSettlePastTransactions());
 
             // 2. GIAI ĐOẠN 1: Nạp song song các bảng dữ liệu độc lập qua Connection Pool
             var taskUsers = Task.Run(() => DatabaseService.Instance.LoadUsersFromDb());
@@ -227,11 +236,6 @@ namespace QuanLyDichVuKhachSan.Services
             if (dbUsers != null && dbUsers.Count > 0)
             {
                 foreach (var u in dbUsers) AddUserToCache(u);
-            }
-            else
-            {
-                AddUserToCache(new User { Id = 1, Username = "admin", Password = "123", FullName = "Chủ Khách Sạn", Role = UserRole.Admin, PhoneNumber = "0948198812", Email = "dalathotel@gmail.com" });
-                AddUserToCache(new User { Id = 2, Username = "letan", Password = "123", FullName = "Lễ Tân Trực Chính", Role = UserRole.Receptionist, PhoneNumber = "0912345678", Email = "letan@dalathotel.vn" });
             }
 
             // 2. Phòng khách sạn
@@ -373,52 +377,10 @@ namespace QuanLyDichVuKhachSan.Services
                 foreach (var lo in dbLaundryOrders) LaundryOrders.Add(lo);
             }
 
-            // 12. Hóa đơn thanh toán phòng mẫu
+            // 12. Hóa đơn quyết toán phòng: nạp từ CSDL để lịch sử/doanh thu không bị mất khi khởi động lại.
             RoomInvoices.Clear();
-            RoomInvoices.Add(new RoomInvoice
-            {
-                InvoiceCode = "HD-KS-20260830-101",
-                RoomNumber = "101 (Phòng đơn)",
-                CustomerName = "Nguyễn Văn Hùng",
-                PhoneNumber = "0912345678",
-                IdentityCard = "001200001234",
-                InvoiceDate = DateTime.Now.AddDays(-1),
-                CheckInDate = DateTime.Now.AddDays(-3),
-                CheckOutDate = DateTime.Now.AddDays(-1),
-                StayNights = 2,
-                PricePerNight = 500000,
-                RoomCost = 1000000,
-                ServicesCost = 160000,
-                TotalAmount = 1160000,
-                IssuedBy = "Trần Thị Thu Hà",
-                PaidItems = new List<RoomServiceUsageItem>
-                {
-                    new() { ServiceCategory = "Ẩm thực", ServiceName = "2x Mì Ly Omachi Bò Hầm", UsedTime = DateTime.Now.AddDays(-2), Amount = 40000, IsPaid = true },
-                    new() { ServiceCategory = "Thuê xe", ServiceName = "Thuê xe máy Honda Wave Alpha", UsedTime = DateTime.Now.AddDays(-2), Amount = 120000, IsPaid = true }
-                }
-            });
-            RoomInvoices.Add(new RoomInvoice
-            {
-                InvoiceCode = "HD-KS-20260829-202",
-                RoomNumber = "202 (Deluxe City View)",
-                CustomerName = "Trần Đình Trọng",
-                PhoneNumber = "0987654321",
-                IdentityCard = "001200005678",
-                InvoiceDate = DateTime.Now.AddDays(-2),
-                CheckInDate = DateTime.Now.AddDays(-4),
-                CheckOutDate = DateTime.Now.AddDays(-2),
-                StayNights = 2,
-                PricePerNight = 800000,
-                RoomCost = 1600000,
-                ServicesCost = 250000,
-                TotalAmount = 1850000,
-                IssuedBy = "Lê Hoàng Nam",
-                PaidItems = new List<RoomServiceUsageItem>
-                {
-                    new() { ServiceCategory = "Giặt ủi", ServiceName = "Giặt sấy khô thông thường 5kg", UsedTime = DateTime.Now.AddDays(-3), Amount = 150000, IsPaid = true },
-                    new() { ServiceCategory = "Ẩm thực", ServiceName = "2x Nước cam ép Teppy", UsedTime = DateTime.Now.AddDays(-3), Amount = 100000, IsPaid = true }
-                }
-            });
+            foreach (var inv in DatabaseService.Instance.LoadInvoicesFromDb())
+                RoomInvoices.Add(inv);
 
             // 13. Nạp danh sách dịch vụ phòng từ các đơn hàng thực tế
             RebuildRoomServiceUsages();
@@ -469,6 +431,10 @@ namespace QuanLyDichVuKhachSan.Services
                     (eb.PaymentStatus != null && eb.PaymentStatus.StartsWith("Đã hủy")))
                     continue;
 
+                // Đơn chưa thanh toán và chưa tới giờ sử dụng thì chưa đưa vào công nợ phòng.
+                if (!eb.DaThanhToan && eb.StartTime > DateTime.Now)
+                    continue;
+
                 if (!IsCurrentStayOrUnpaid(eb.RoomNumber, eb.StartTime, eb.DaThanhToan))
                     continue;
 
@@ -493,6 +459,10 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 if ((vr.OrderStatus != null && vr.OrderStatus.StartsWith("Đã hủy")) ||
                     (vr.Status != null && vr.Status.StartsWith("Đã hủy")))
+                    continue;
+
+                // Đơn chưa thanh toán và chưa tới ngày thuê thì chưa đưa vào công nợ phòng.
+                if (!vr.DaThanhToan && vr.RentalDate > DateTime.Now)
                     continue;
 
                 if (!IsCurrentStayOrUnpaid(vr.RoomNumber, vr.RentalDate, vr.DaThanhToan))
@@ -784,22 +754,26 @@ namespace QuanLyDichVuKhachSan.Services
         {
             var list = new List<TransactionRecord>();
 
-            // 1. Hóa đơn thanh toán phòng & dịch vụ kèm phòng
+            // 1. Tiền phòng. Dịch vụ kèm phòng đã được liệt kê riêng ở các mục bên dưới,
+            //    nên chỉ ghi nhận phần tiền phòng để tránh cộng trùng doanh thu.
             foreach (var inv in RoomInvoices)
             {
+                if (inv.RoomCost <= 0) continue;
+
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = inv.InvoiceCode,
-                    ServiceCategory = "Tiền phòng & Dịch vụ",
+                    ServiceCategory = "Tiền phòng",
                     CustomerName = inv.CustomerName,
                     PhoneNumber = inv.PhoneNumber,
                     RoomNumber = inv.RoomNumber,
                     PaymentTime = inv.InvoiceDate,
-                    Amount = inv.TotalAmount,
+                    Amount = inv.RoomCost,
                     PaymentMethod = "Thanh toán phòng (Check-out)",
                     CreatedBy = !string.IsNullOrWhiteSpace(inv.IssuedBy) ? inv.IssuedBy : "Chủ khách sạn",
                     PaidBy = !string.IsNullOrWhiteSpace(inv.PaidBy) ? inv.PaidBy : (!string.IsNullOrWhiteSpace(inv.IssuedBy) ? inv.IssuedBy : "Chủ khách sạn"),
                     Status = "Đã thanh toán",
+                    IsPaid = true,
                     OriginalObject = inv
                 });
             }
@@ -824,6 +798,7 @@ namespace QuanLyDichVuKhachSan.Services
                     CreatedBy = creator,
                     PaidBy = fo.DaThanhToan ? payer : "",
                     Status = fo.Status == "Đã hủy" ? "Đã hủy" : (fo.DaThanhToan ? "Đã thanh toán" : "Chưa thanh toán"),
+                    IsPaid = fo.DaThanhToan && fo.Status != "Đã hủy",
                     OriginalObject = fo
                 });
             }
@@ -852,6 +827,7 @@ namespace QuanLyDichVuKhachSan.Services
                     CreatedBy = creator,
                     PaidBy = eb.DaThanhToan ? payer : "",
                     Status = ebStatus,
+                    IsPaid = eb.DaThanhToan && (eb.OrderStatus == null || !eb.OrderStatus.StartsWith("Đã hủy")),
                     OriginalObject = eb
                 });
             }
@@ -879,6 +855,7 @@ namespace QuanLyDichVuKhachSan.Services
                     CreatedBy = creator,
                     PaidBy = vr.DaThanhToan ? payer : "",
                     Status = vrStatus,
+                    IsPaid = vr.DaThanhToan && (vr.OrderStatus == null || !vr.OrderStatus.StartsWith("Đã hủy")),
                     OriginalObject = vr
                 });
             }
@@ -904,6 +881,7 @@ namespace QuanLyDichVuKhachSan.Services
                     CreatedBy = creator,
                     PaidBy = pr.DaThanhToan ? payer : "",
                     Status = pr.DaThanhToan ? "Đã thanh toán" : "Chưa thanh toán",
+                    IsPaid = pr.DaThanhToan,
                     OriginalObject = pr
                 });
             }
@@ -926,6 +904,7 @@ namespace QuanLyDichVuKhachSan.Services
                     CreatedBy = creator,
                     PaidBy = lo.DaThanhToan ? payer : "",
                     Status = lo.Status == LaundryStatus.Cancelled ? "Đã hủy" : (lo.DaThanhToan ? "Đã thanh toán" : "Chưa thanh toán"),
+                    IsPaid = lo.DaThanhToan && lo.Status != LaundryStatus.Cancelled,
                     OriginalObject = lo
                 });
             }
@@ -939,14 +918,20 @@ namespace QuanLyDichVuKhachSan.Services
 
         public List<ServiceRevenueSummary> GetServiceRevenueSummaries(DateTime? start = null, DateTime? end = null)
         {
+            var roomInvoices = RoomInvoices.AsEnumerable();
             var foodList = FoodOrders.Where(x => x.DaThanhToan && x.Status != "Đã hủy");
-            var eventList = EventBookings.Where(x => x.DaThanhToan);
-            var vehicleList = VehicleRentals.Where(x => x.DaThanhToan);
+            var eventList = EventBookings.Where(x => x.DaThanhToan
+                && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy"))
+                && (x.PaymentStatus == null || !x.PaymentStatus.StartsWith("Đã hủy")));
+            var vehicleList = VehicleRentals.Where(x => x.DaThanhToan
+                && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy"))
+                && (x.Status == null || !x.Status.StartsWith("Đã hủy")));
             var parkingList = ParkingRecords.Where(x => x.DaThanhToan);
             var laundryList = LaundryOrders.Where(x => x.DaThanhToan && x.Status != LaundryStatus.Cancelled);
 
             if (start.HasValue && end.HasValue)
             {
+                roomInvoices = roomInvoices.Where(x => x.InvoiceDate >= start.Value && x.InvoiceDate <= end.Value);
                 foodList = foodList.Where(x => x.CreatedAt >= start.Value && x.CreatedAt <= end.Value);
                 eventList = eventList.Where(x => x.StartTime >= start.Value && x.StartTime <= end.Value);
                 vehicleList = vehicleList.Where(x => x.RentalDate >= start.Value && x.RentalDate <= end.Value);
@@ -954,17 +939,19 @@ namespace QuanLyDichVuKhachSan.Services
                 laundryList = laundryList.Where(x => x.ReceivedDate >= start.Value && x.ReceivedDate <= end.Value);
             }
 
+            decimal roomRev = roomInvoices.Sum(x => x.RoomCost);
             decimal foodRev = foodList.Sum(x => x.TotalAmount);
             decimal eventRev = eventList.Sum(x => x.FinalTotal);
             decimal vehicleRev = vehicleList.Sum(x => x.RentalFee + x.AdditionalCost);
             decimal parkingRev = parkingList.Sum(x => x.ParkingFee);
             decimal laundryRev = laundryList.Sum(x => x.HotelEarnings);
 
-            decimal totalAll = foodRev + eventRev + vehicleRev + parkingRev + laundryRev;
+            decimal totalAll = roomRev + foodRev + eventRev + vehicleRev + parkingRev + laundryRev;
             if (totalAll == 0) totalAll = 1;
 
             return new List<ServiceRevenueSummary>
             {
+                new() { ServiceName = "Tiền phòng", ServiceType = "Nội bộ", TransactionCount = roomInvoices.Count(), TotalRevenue = roomRev, Percentage = Math.Round((double)(roomRev / totalAll * 100), 1) },
                 new() { ServiceName = "Ăn Uống", ServiceType = "Tự túc", TransactionCount = foodList.Count(), TotalRevenue = foodRev, Percentage = Math.Round((double)(foodRev / totalAll * 100), 1) },
                 new() { ServiceName = "Sảnh & Sự Kiện", ServiceType = "Tự túc", TransactionCount = eventList.Count(), TotalRevenue = eventRev, Percentage = Math.Round((double)(eventRev / totalAll * 100), 1) },
                 new() { ServiceName = "Cho Thuê Xe Máy", ServiceType = "Tự túc", TransactionCount = vehicleList.Count(), TotalRevenue = vehicleRev, Percentage = Math.Round((double)(vehicleRev / totalAll * 100), 1) },
@@ -1124,6 +1111,17 @@ namespace QuanLyDichVuKhachSan.Services
             order.RecordedBy = GetCurrentDutyStaffName();
             order.RoomNumber = NormalizeRoomNumber(order.RoomNumber);
 
+            // Kiểm tra tồn kho trước khi ghi nhận đơn để tránh bán vượt tồn.
+            foreach (var item in order.Items)
+            {
+                if (_foodItemCache.TryGetValue(item.FoodItemId, out var stockItem) &&
+                    stockItem.StockQuantity < item.Quantity)
+                {
+                    throw new InvalidOperationException(
+                        $"Món '{stockItem.Name}' chỉ còn {stockItem.StockQuantity} phần, không đủ để bán {item.Quantity} phần.");
+                }
+            }
+
             if (order.PaymentType == FoodPaymentType.SeparateBill)
             {
                 order.DaThanhToan = true;
@@ -1139,29 +1137,26 @@ namespace QuanLyDichVuKhachSan.Services
                 order.Status = "Chờ xử lý";
             }
 
-            FoodOrders.Insert(0, order);
-
-            // Cập nhật tồn kho
             // Trừ tồn kho và lấy giá vốn bình quân tại thời điểm bán
             foreach (var item in order.Items)
             {
+                var (success, cost) = DatabaseService.Instance.DatMonAn(item.FoodItemId, item.Quantity);
+                if (!success)
+                {
+                    throw new InvalidOperationException(
+                        $"Không thể trừ kho cho món '{item.FoodItemName}'. Món có thể đã hết hàng hoặc SQL Server gặp lỗi.");
+                }
+
+                if (cost > 0)
+                    item.CostPrice = cost;
+
                 if (_foodItemCache.TryGetValue(item.FoodItemId, out var food))
                 {
-                    item.CostPrice = food.AverageCostPrice;
+                    if (item.CostPrice <= 0)
+                        item.CostPrice = food.AverageCostPrice;
                     food.StockQuantity = Math.Max(0, food.StockQuantity - item.Quantity);
                     food.NotifyStockChanged();
                 }
-
-                // Gọi sp_DatMonAn trên SQL Server để kiểm tra, trừ kho và lấy giá vốn chuẩn
-                try
-                {
-                    var (success, cost) = DatabaseService.Instance.DatMonAn(item.FoodItemId, item.Quantity);
-                    if (cost > 0)
-                    {
-                        item.CostPrice = cost;
-                    }
-                }
-                catch { }
             }
 
             string payTypeStr = (order.PaymentType == FoodPaymentType.ChargeToRoom || order.PaymentType == FoodPaymentType.AddToRoomBill) 
@@ -1203,7 +1198,22 @@ namespace QuanLyDichVuKhachSan.Services
                 paramList.Add(new SqlParameter($"@Cost_{i}", it.CostPrice));
             }
 
-            _ = DatabaseService.Instance.ExecuteNonQueryAsync(insertSql, paramList.ToArray());
+            int affectedRows;
+            try
+            {
+                affectedRows = DatabaseService.Instance
+                    .ExecuteNonQueryAsync(insertSql, paramList.ToArray())
+                    .GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("Không thể lưu đơn món ăn vào CSDL: " + ex.Message, ex);
+            }
+
+            if (affectedRows <= 0)
+                throw new InvalidOperationException("Không thể lưu đơn món ăn vào CSDL.");
+
+            FoodOrders.Insert(0, order);
 
             // Đồng bộ sang sơ đồ phòng nếu có chọn phòng
             if (!string.IsNullOrEmpty(order.RoomNumber))
@@ -1920,65 +1930,53 @@ namespace QuanLyDichVuKhachSan.Services
                 .ToList();
         }
 
-        public (List<RoomServiceUsageItem> PaidItems, decimal RoomCost, decimal ServicesCost, decimal TotalAmount) PayRoomServices(string roomNumber)
+        public (bool Success, List<RoomServiceUsageItem> PaidItems, decimal RoomCost, decimal ServicesCost, decimal TotalAmount) PayRoomServices(string roomNumber, bool includeRoomCharge)
         {
             string norm = NormalizeRoomNumber(roomNumber);
-            if (string.IsNullOrEmpty(norm)) return (new List<RoomServiceUsageItem>(), 0, 0, 0);
+            if (string.IsNullOrEmpty(norm)) return (false, new List<RoomServiceUsageItem>(), 0, 0, 0);
 
             var unpaidList = RoomServiceUsages
                 .Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.IsPaid)
                 .ToList();
 
-            decimal servicesCost = 0;
-            foreach (var item in unpaidList)
-            {
-                item.IsPaid = true;
-                servicesCost += item.Amount;
-            }
-
             var room = HotelRooms.FirstOrDefault(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase));
-            decimal roomCost = (room?.StayNights ?? 1) * (room?.PricePerNight ?? 0);
-            decimal grandTotal = servicesCost;
+            decimal servicesCost = unpaidList.Sum(x => x.Amount);
+            decimal roomCost = includeRoomCharge ? (room?.StayNights ?? 1) * (room?.PricePerNight ?? 0) : 0;
+            decimal grandTotal = roomCost + servicesCost;
             int staffId = GetCurrentDutyStaffId();
             string staffName = GetCurrentDutyStaffName();
 
-            // Đồng bộ trạng thái sang các bảng đơn hàng chưa thanh toán (bỏ qua đơn đã hủy)
+            // Chỉ ghi nhận thanh toán khi SQL Server xác nhận thành công.
+            if (!DatabaseService.Instance.ConfirmRoomPayment(norm, staffId))
+                return (false, unpaidList, roomCost, servicesCost, grandTotal);
+
+            foreach (var item in unpaidList)
+                item.IsPaid = true;
+
+            // Thanh toán không đồng nghĩa với việc dịch vụ đã hoàn tất.
             foreach (var food in FoodOrders.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && x.Status != "Đã hủy"))
             {
                 food.DaThanhToan = true;
                 food.NguoiThanhToanId = staffId;
                 food.PaidByStaffName = staffName;
                 food.ThoiGianThanhToan = DateTime.Now;
-                food.Status = "Đã giao";
             }
-            foreach (var sk in EventBookings.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy"))))
+            foreach (var sk in EventBookings.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy")) && x.StartTime <= DateTime.Now))
             {
                 sk.DaThanhToan = true;
                 sk.NguoiThanhToanId = staffId;
                 sk.PaidByStaffName = staffName;
                 sk.ThoiGianThanhToan = DateTime.Now;
                 sk.PaymentStatus = "Hoàn tất";
-                if (sk.OrderStatus == "Đang sử dụng" || sk.EndTime <= DateTime.Now)
-                {
-                    sk.OrderStatus = "Hoàn tất";
-                }
             }
-            foreach (var tx in VehicleRentals.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy")) && (x.Status == null || !x.Status.StartsWith("Đã hủy"))))
+            foreach (var tx in VehicleRentals.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy")) && (x.Status == null || !x.Status.StartsWith("Đã hủy")) && x.RentalDate <= DateTime.Now))
             {
                 tx.DaThanhToan = true;
                 tx.NguoiThanhToanId = staffId;
                 tx.PaidByStaffName = staffName;
                 tx.ThoiGianThanhToan = DateTime.Now;
                 tx.PaymentStatus = "Hoàn tất";
-                if (tx.OrderStatus == "Đang thuê" || tx.Status == "Đang thuê" || tx.ExpectedReturnDate <= DateTime.Now)
-                {
-                    tx.OrderStatus = "Hoàn tất";
-                    tx.Status = "Hoàn tất";
-                    tx.ActualReturnDate ??= DateTime.Now;
-                }
             }
-            SyncVehicleFleetStatus();
-
             foreach (var laundry in LaundryOrders.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && x.Status != LaundryStatus.Cancelled))
             {
                 laundry.DaThanhToan = true;
@@ -1994,32 +1992,32 @@ namespace QuanLyDichVuKhachSan.Services
                 parking.ThoiGianThanhToan = DateTime.Now;
             }
 
-            // Tạo hóa đơn lưu trữ vào lịch sử giao dịch
-            var newInv = new RoomInvoice
+            if (unpaidList.Count > 0 || includeRoomCharge)
             {
-                InvoiceCode = $"HD-KS-{DateTime.Now:yyyyMMdd}-{norm}",
-                RoomNumber = room != null ? $"{room.RoomNumber} ({room.RoomType})" : norm,
-                CustomerName = room?.CustomerName ?? "Khách lưu trú",
-                PhoneNumber = room?.PhoneNumber ?? "",
-                IdentityCard = room?.IdentityCard ?? "",
-                InvoiceDate = DateTime.Now,
-                CheckInDate = room?.CheckInDate ?? DateTime.Now,
-                CheckOutDate = room?.ExpectedCheckOutDate ?? DateTime.Now,
-                StayNights = room?.StayNights ?? 1,
-                PricePerNight = room?.PricePerNight ?? 0,
-                RoomCost = roomCost,
-                ServicesCost = servicesCost,
-                TotalAmount = grandTotal,
-                IssuedBy = staffName,
-                PaidBy = staffName,
-                PaidItems = unpaidList
-            };
-            RoomInvoices.Insert(0, newInv);
+                var newInv = new RoomInvoice
+                {
+                    InvoiceCode = $"HD-KS-{DateTime.Now:yyyyMMddHHmmss}-{norm}",
+                    RoomNumber = room != null ? $"{room.RoomNumber} ({room.RoomType})" : norm,
+                    CustomerName = room?.CustomerName ?? "Khách lưu trú",
+                    PhoneNumber = room?.PhoneNumber ?? "",
+                    IdentityCard = room?.IdentityCard ?? "",
+                    InvoiceDate = DateTime.Now,
+                    CheckInDate = room?.CheckInDate ?? DateTime.Now,
+                    CheckOutDate = room?.ExpectedCheckOutDate ?? DateTime.Now,
+                    StayNights = room?.StayNights ?? 1,
+                    PricePerNight = room?.PricePerNight ?? 0,
+                    RoomCost = roomCost,
+                    ServicesCost = servicesCost,
+                    TotalAmount = grandTotal,
+                    IssuedBy = staffName,
+                    PaidBy = staffName,
+                    PaidItems = unpaidList
+                };
+                RoomInvoices.Insert(0, newInv);
+                DatabaseService.Instance.SaveInvoice(newInv);
+            }
 
-            // Gọi Stored Procedure chính thức trong CSDL SQL Server
-            _ = DatabaseService.Instance.ConfirmRoomPaymentAsync(norm, staffId);
-
-            return (unpaidList, roomCost, servicesCost, grandTotal);
+            return (true, unpaidList, roomCost, servicesCost, grandTotal);
         }
 
         /// <summary>

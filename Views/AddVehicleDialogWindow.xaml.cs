@@ -70,14 +70,14 @@ namespace QuanLyDichVuKhachSan.Views
                 return;
             }
 
-            string rateStr = TxtDailyRate.Text.Replace(",", "").Replace(".", "").Trim();
+            string rateStr = TxtDailyRate.Text.Trim();
             if (!decimal.TryParse(rateStr, out var rate) || rate <= 0)
             {
                 MessageBox.Show("Giá thuê theo ngày phải lớn hơn 0!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            string depositStr = TxtRequiredDeposit.Text.Replace(",", "").Replace(".", "").Trim();
+            string depositStr = TxtRequiredDeposit.Text.Trim();
             if (!decimal.TryParse(depositStr, out var deposit) || deposit < 0)
             {
                 deposit = Math.Round(rate * 0.3m / 1000m) * 1000m;
@@ -109,10 +109,24 @@ namespace QuanLyDichVuKhachSan.Views
                 using var cmd = new SqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@BienSo", plate);
                 cmd.Parameters.AddWithValue("@Ten", name);
-                cmd.Parameters.AddWithValue("@Loai", vType == VehicleType.Scooter ? "Xe tay ga" : vType == VehicleType.Manual ? "Xe số" : "Xe côn tay");
+                string dbType = vType switch
+                {
+                    VehicleType.Scooter => "Xe tay ga",
+                    VehicleType.Manual => "Xe số",
+                    VehicleType.Clutch => "Xe côn tay",
+                    _ => "Xe ô tô"
+                };
+                string dbStatus = vStatus switch
+                {
+                    VehicleStatus.Available => "Sẵn sàng",
+                    VehicleStatus.Maintenance => "Bảo trì",
+                    _ => "Hoạt động"
+                };
+
+                cmd.Parameters.AddWithValue("@Loai", dbType);
                 cmd.Parameters.AddWithValue("@Gia", rate);
                 cmd.Parameters.AddWithValue("@Coc", deposit);
-                cmd.Parameters.AddWithValue("@Status", vStatus == VehicleStatus.Available ? "Sẵn sàng" : vStatus == VehicleStatus.Rented ? "Đang cho thuê" : "Bảo trì");
+                cmd.Parameters.AddWithValue("@Status", dbStatus);
                 cmd.Parameters.AddWithValue("@Note", note);
 
                 var res = await cmd.ExecuteScalarAsync();
@@ -128,9 +142,8 @@ namespace QuanLyDichVuKhachSan.Views
 
             if (newId <= 0)
             {
-                newId = DataService.Instance.Vehicles.Count > 0 
-                    ? DataService.Instance.Vehicles.Max(x => x.Id) + 1 
-                    : 1;
+                MessageBox.Show("Không thể lưu xe vào CSDL. Vui lòng kiểm tra kết nối và thử lại!", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
 
             var newVehicle = new Vehicle
