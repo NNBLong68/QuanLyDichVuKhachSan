@@ -167,7 +167,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="border" Property="Background" Value="White"/>
-                            <Setter Property="Foreground" Value="#2563EB"/>
+                            <Setter Property="Foreground" Value="#B45309"/>
                             <Setter Property="FontWeight" Value="Bold"/>
                             <Setter TargetName="border" Property="Effect">
                                 <Setter.Value>
@@ -311,6 +311,9 @@
         <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
         <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
         <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+        <!-- Không cắt chữ: cho phép cuộn ngang khi tổng độ rộng các cột vượt khung -->
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
         <Setter Property="RenderOptions.ClearTypeHint" Value="Enabled"/>
         <Setter Property="UseLayoutRounding" Value="True"/>
         <Setter Property="SnapsToDevicePixels" Value="True"/>

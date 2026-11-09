@@ -13,6 +13,57 @@
              TextOptions.TextHintingMode="Fixed">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Nền chung cho các DataGrid kho: chọn dòng nền xám, chữ đậm, không bị xanh-trên-xanh -->
+        <Style x:Key="InventoryRowStyle" TargetType="DataGridRow">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#1E293B"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#F8FAFC"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#E2E8F0"/>
+                    <Setter Property="Foreground" Value="#0F172A"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Card KPI có thể bấm để điều hướng -->
+        <Style x:Key="InventoryKpiCardButton" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="Padding" Value="16,14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Card"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Card" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Card" Property="Opacity" Value="0.82"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <Grid Margin="20">
@@ -33,7 +84,7 @@
             <Button Grid.Column="1" Command="{Binding RefreshCommand}" Content="🔄 Làm Mới Dữ Liệu" Style="{StaticResource ModernButton}" Height="32" Padding="12,0"/>
         </Grid>
 
-        <!-- 2. KPI Summary Cards (Bỏ tổng tồn kho lẻ theo yêu cầu) -->
+        <!-- 2. KPI Summary Cards: bấm để điều hướng 3 màn hình kho hàng -->
         <Grid Grid.Row="1" Margin="0,0,0,14">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -43,37 +94,140 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Card 1: Mặt hàng quản lý -->
-            <Border Grid.Column="0" Style="{StaticResource StatCard}">
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="MẶT HÀNG QUẢN LÝ" FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
-                    <TextBlock Text="{Binding TotalDryItemsCount, StringFormat='{}{0} Loại'}" FontSize="20" FontWeight="Bold" Foreground="#1E293B" Margin="0,4,0,0"/>
-                </StackPanel>
-            </Border>
+            <!-- Card 1: Kho hàng đang quản lý (mặc định) -->
+            <Button Grid.Column="0" Command="{Binding SetTabCommand}" CommandParameter="Warehouse"
+                    ToolTip="Xem toàn bộ mặt hàng đang quản lý">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource InventoryKpiCardButton}">
+                        <Setter Property="Background" Value="White"/>
+                        <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ActiveTab}" Value="Warehouse">
+                                <Setter Property="Background" Value="#F8FAFC"/>
+                                <Setter Property="BorderBrush" Value="#334155"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="KHO HÀNG ĐANG QUẢN LÝ" FontSize="10.5" FontWeight="Bold" Foreground="#475569"/>
+                        <TextBlock Text="{Binding TotalDryItemsCount, StringFormat='{}{0} Loại'}" FontSize="20" FontWeight="Bold" Foreground="#1E293B" Margin="0,4,0,0"/>
+                        <TextBlock FontSize="9.5" Margin="0,6,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="Bấm để xem toàn bộ"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveTab}" Value="Warehouse">
+                                            <Setter Property="Text" Value="✓ Đang xem"/>
+                                            <Setter Property="Foreground" Value="#334155"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="📦" FontSize="26" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                </Grid>
+            </Button>
 
-            <!-- Card 2: Cảnh báo tồn thấp -->
-            <Border Grid.Column="2" Style="{StaticResource StatCard}" Background="#FFFBEB" BorderBrush="#FDE68A">
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="⚠️ CẢNH BÁO TỒN THẤP" FontSize="10.5" FontWeight="Bold" Foreground="#B45309"/>
-                    <TextBlock Text="{Binding LowStockItemsCount, StringFormat='{}{0} Mặt Hàng'}" FontSize="20" FontWeight="Bold" Foreground="#D97706" Margin="0,4,0,0"/>
-                </StackPanel>
-            </Border>
+            <!-- Card 2: Hàng gần hết -->
+            <Button Grid.Column="2" Command="{Binding SetTabCommand}" CommandParameter="LowStock"
+                    ToolTip="Xem các mặt hàng có tồn kho thấp theo ngưỡng cảnh báo">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource InventoryKpiCardButton}">
+                        <Setter Property="Background" Value="#FFFBEB"/>
+                        <Setter Property="BorderBrush" Value="#FDE68A"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ActiveTab}" Value="LowStock">
+                                <Setter Property="BorderBrush" Value="#D97706"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="HÀNG GẦN HẾT" FontSize="10.5" FontWeight="Bold" Foreground="#B45309"/>
+                        <TextBlock Text="{Binding LowStockItemsCount, StringFormat='{}{0} Mặt Hàng'}" FontSize="20" FontWeight="Bold" Foreground="#D97706" Margin="0,4,0,0"/>
+                        <TextBlock FontSize="9.5" Margin="0,6,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="Bấm để xem mặt hàng gần hết"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveTab}" Value="LowStock">
+                                            <Setter Property="Text" Value="✓ Đang xem"/>
+                                            <Setter Property="Foreground" Value="#B45309"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="⚠️" FontSize="26" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                </Grid>
+            </Button>
 
             <!-- Card 3: Lô hàng cận hạn -->
-            <Border Grid.Column="4" Style="{StaticResource StatCard}" Background="#FEF2F2" BorderBrush="#FECACA">
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="⏰ LÔ HÀNG CẬN HẠN" FontSize="10.5" FontWeight="Bold" Foreground="#991B1B"/>
-                    <TextBlock Text="{Binding NearExpiryBatchesCount, StringFormat='{}{0} Lô'}" FontSize="20" FontWeight="Bold" Foreground="#DC2626" Margin="0,4,0,0"/>
-                </StackPanel>
-            </Border>
+            <Button Grid.Column="4" Command="{Binding SetTabCommand}" CommandParameter="NearExpiry"
+                    ToolTip="Xem các lô hàng có hạn sử dụng trong 7 ngày tới">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource InventoryKpiCardButton}">
+                        <Setter Property="Background" Value="#FEF2F2"/>
+                        <Setter Property="BorderBrush" Value="#FECACA"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ActiveTab}" Value="NearExpiry">
+                                <Setter Property="BorderBrush" Value="#DC2626"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="LÔ HÀNG CẬN HẠN" FontSize="10.5" FontWeight="Bold" Foreground="#991B1B"/>
+                        <TextBlock Text="{Binding NearExpiryBatchesCount, StringFormat='{}{0} Lô'}" FontSize="20" FontWeight="Bold" Foreground="#DC2626" Margin="0,4,0,0"/>
+                        <TextBlock FontSize="9.5" Margin="0,6,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="Bấm để xem lô cận hạn"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveTab}" Value="NearExpiry">
+                                            <Setter Property="Text" Value="✓ Đang xem"/>
+                                            <Setter Property="Foreground" Value="#B91C1C"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="⏰" FontSize="26" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                </Grid>
+            </Button>
         </Grid>
 
-        <!-- 3. Tab Bar Navigation (Đã tinh giản tiêu đề tab) -->
+        <!-- 3. Tab Bar Navigation: giữ lại 2 tab nhập kho & lịch sử -->
         <Border Grid.Row="2" Background="#F1F5F9" CornerRadius="8" Padding="4" Margin="0,0,0,14">
             <StackPanel Orientation="Horizontal">
-                <RadioButton Content="📥 1. LẬP PHIẾU NHẬP KHO" Command="{Binding SetTabCommand}" CommandParameter="Receipt" IsChecked="True" Style="{StaticResource SegmentTabButton}" Margin="0,0,4,0"/>
-                <RadioButton Content="🏷️ 2. DANH MỤC MẶT HÀNG" Command="{Binding SetTabCommand}" CommandParameter="Catalog" Style="{StaticResource SegmentTabButton}" Margin="0,0,4,0"/>
-                <RadioButton Content="📜 3. LỊCH SỬ NHẬP KHO" Command="{Binding SetTabCommand}" CommandParameter="History" Style="{StaticResource SegmentTabButton}"/>
+                <RadioButton Content="📥 1. LẬP PHIẾU NHẬP KHO" Command="{Binding SetTabCommand}" CommandParameter="Receipt"
+                             IsChecked="{Binding IsReceiptTabActive, Mode=OneWay}"
+                             Style="{StaticResource SegmentTabButton}" Margin="0,0,4,0"/>
+                <RadioButton Content="📜 2. LỊCH SỬ NHẬP KHO" Command="{Binding SetTabCommand}" CommandParameter="History"
+                             IsChecked="{Binding IsHistoryTabActive, Mode=OneWay}"
+                             Style="{StaticResource SegmentTabButton}"/>
             </StackPanel>
         </Border>
 
@@ -232,16 +386,16 @@
                         <Border Grid.Row="1" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" helpers:TabProgressiveRender.IsDataRegion="True">
                             <DataGrid ItemsSource="{Binding DraftReceiptItems}" AutoGenerateColumns="False" IsReadOnly="True">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Mặt Hàng" Binding="{Binding FoodItemName}" Width="160" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="ĐVT Nhập" Binding="{Binding ImportUnit}" Width="80"/>
-                                    <DataGridTextColumn Header="Hệ Số" Binding="{Binding ConversionRate}" Width="60"/>
-                                    <DataGridTextColumn Header="SL Nhập" Binding="{Binding Quantity}" Width="70" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="Quy Đổi Lẻ" Binding="{Binding CalculationSummary}" Width="150"/>
-                                    <DataGridTextColumn Header="Đơn Giá Nhập" Binding="{Binding ImportPrice, StringFormat='{}{0:N0} đ'}" Width="105"/>
-                                    <DataGridTextColumn Header="Thành Tiền" Binding="{Binding TotalCost, StringFormat='{}{0:N0} đ'}" Width="110" FontWeight="Bold" Foreground="#D97706"/>
-                                    <DataGridTextColumn Header="Số Lô" Binding="{Binding BatchNumber}" Width="85"/>
-                                    <DataGridTextColumn Header="HSD" Binding="{Binding ExpiryDisplay}" Width="90"/>
-                                    <DataGridTemplateColumn Header="Thao Tác" Width="70">
+                                    <DataGridTextColumn Header="Mặt Hàng" Binding="{Binding FoodItemName}" Width="Auto" FontWeight="Bold"/>
+                                    <DataGridTextColumn Header="ĐVT Nhập" Binding="{Binding ImportUnit}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Hệ Số" Binding="{Binding ConversionRate}" Width="Auto"/>
+                                    <DataGridTextColumn Header="SL Nhập" Binding="{Binding Quantity}" Width="Auto" FontWeight="Bold"/>
+                                    <DataGridTextColumn Header="Quy Đổi Lẻ" Binding="{Binding CalculationSummary}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Đơn Giá Nhập" Binding="{Binding ImportPrice, StringFormat='{}{0:N0} đ'}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Thành Tiền" Binding="{Binding TotalCost, StringFormat='{}{0:N0} đ'}" Width="Auto" FontWeight="Bold" Foreground="#D97706"/>
+                                    <DataGridTextColumn Header="Số Lô" Binding="{Binding BatchNumber}" Width="Auto"/>
+                                    <DataGridTextColumn Header="HSD" Binding="{Binding ExpiryDisplay}" Width="Auto"/>
+                                    <DataGridTemplateColumn Header="Thao Tác" Width="Auto">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <Button Content="❌ Xóa" Command="{Binding DataContext.RemoveDraftItemCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="#EF4444" Foreground="White" BorderThickness="0" Padding="4,2" FontSize="10" Cursor="Hand"/>
@@ -270,15 +424,15 @@
             </Grid>
 
             <!-- ====================================================================== -->
-            <!-- TAB 2: DANH MỤC MẶT HÀNG (ĐÃ BỎ QUY ĐỊNH KHO)                          -->
+            <!-- MÀN 1: KHO HÀNG ĐANG QUẢN LÝ (MẶC ĐỊNH)                                -->
             <!-- ====================================================================== -->
-            <Grid x:Name="SubTabCatalog">
+            <Grid x:Name="SubTabWarehouse">
                 <Grid.Style>
                     <Style TargetType="Grid">
                         <Setter Property="Visibility" Value="Hidden"/>
                         <Setter Property="IsHitTestVisible" Value="False"/>
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding ActiveTab}" Value="Catalog">
+                            <DataTrigger Binding="{Binding ActiveTab}" Value="Warehouse">
                                 <Setter Property="Visibility" Value="Visible"/>
                                 <Setter Property="IsHitTestVisible" Value="True"/>
                             </DataTrigger>
@@ -303,7 +457,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="260"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="📋 DANH MỤC MẶT HÀNG KHO" FontSize="15" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="0" Text="📋 KHO HÀNG ĐANG QUẢN LÝ" FontSize="15" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
                             <TextBox Grid.Column="1" Text="{Binding CatalogSearchText, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="30" ToolTip="Tìm kiếm theo tên mặt hàng..."/>
                         </Grid>
 
@@ -318,28 +472,33 @@
                                 </ContextMenu>
                             </DataGrid.ContextMenu>
                             <DataGrid.RowStyle>
-                                <Style TargetType="DataGridRow">
+                                <Style TargetType="DataGridRow" BasedOn="{StaticResource InventoryRowStyle}">
+                                    <Setter Property="Cursor" Value="Hand"/>
                                     <EventSetter Event="PreviewMouseRightButtonDown" Handler="DataGridRow_PreviewMouseRightButtonDown"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsLowStock}" Value="True">
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsLowStock}" Value="True"/>
+                                                <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource Self}}" Value="False"/>
+                                            </MultiDataTrigger.Conditions>
                                             <Setter Property="Background" Value="#FEF3C7"/>
                                             <Setter Property="FontWeight" Value="SemiBold"/>
-                                        </DataTrigger>
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </DataGrid.RowStyle>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Mã MH" Binding="{Binding ItemCode}" Width="75" FontWeight="Bold" Foreground="#2563EB"/>
-                                <DataGridTextColumn Header="Tên Mặt Hàng" Binding="{Binding Name}" Width="160" FontWeight="Bold"/>
-                                <DataGridTextColumn Header="Phân Loại" Binding="{Binding Category}" Width="90" FontWeight="SemiBold"/>
-                                <DataGridTextColumn Header="ĐVT Bán Lẻ" Binding="{Binding RetailUnit}" Width="85"/>
-                                <DataGridTextColumn Header="Giá Bán Lẻ" Binding="{Binding Price, StringFormat='{}{0:N0} đ'}" Width="105" FontWeight="Bold" Foreground="#2563EB"/>
-                                <DataGridTextColumn Header="Giá Vốn Bình Quân" Binding="{Binding AverageCostPrice, StringFormat='{}{0:N0} đ'}" Width="125" FontWeight="SemiBold" Foreground="#059669"/>
-                                <DataGridTextColumn Header="Tồn Kho Lẻ" Binding="{Binding StockDisplay}" Width="95" FontWeight="Bold"/>
-                                <DataGridTextColumn Header="Ngưỡng Báo" Binding="{Binding LowStockThreshold}" Width="85"/>
-                                <DataGridTextColumn Header="ĐVT Nhập Mặc Định" Binding="{Binding DefaultImportUnit}" Width="120"/>
-                                <DataGridTextColumn Header="Hệ Số Quy Đổi" Binding="{Binding DefaultConversionRate}" Width="95"/>
-                                <DataGridTemplateColumn Header="Trạng Thái (Phục Vụ)" Width="160">
+                                <DataGridTextColumn Header="Mã MH" Binding="{Binding ItemCode}" Width="Auto" FontWeight="Bold" Foreground="#475569"/>
+                                <DataGridTextColumn Header="Tên Mặt Hàng" Binding="{Binding Name}" Width="Auto" FontWeight="Bold"/>
+                                <DataGridTextColumn Header="Phân Loại" Binding="{Binding Category}" Width="Auto" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="ĐVT Bán Lẻ" Binding="{Binding RetailUnit}" Width="Auto"/>
+                                <DataGridTextColumn Header="Giá Bán Lẻ" Binding="{Binding Price, StringFormat='{}{0:N0} đ'}" Width="Auto" FontWeight="Bold" Foreground="#B45309"/>
+                                <DataGridTextColumn Header="Giá Vốn Bình Quân" Binding="{Binding AverageCostPrice, StringFormat='{}{0:N0} đ'}" Width="Auto" FontWeight="SemiBold" Foreground="#059669"/>
+                                <DataGridTextColumn Header="Tồn Kho Lẻ" Binding="{Binding StockDisplay}" Width="Auto" FontWeight="Bold"/>
+                                <DataGridTextColumn Header="Ngưỡng Báo" Binding="{Binding LowStockThreshold}" Width="Auto"/>
+                                <DataGridTextColumn Header="ĐVT Nhập Mặc Định" Binding="{Binding DefaultImportUnit}" Width="Auto"/>
+                                <DataGridTextColumn Header="Hệ Số Quy Đổi" Binding="{Binding DefaultConversionRate}" Width="Auto"/>
+                                <DataGridTemplateColumn Header="Trạng Thái (Phục Vụ)" Width="Auto">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
@@ -383,7 +542,7 @@
                                 <TextBlock Text="➕ THÊM MẶT HÀNG MỚI" FontSize="14" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,10"/>
 
                                 <TextBlock Text="Mã Mặt Hàng:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                                <TextBox Text="{Binding AutoGeneratedNewItemCode, Mode=OneWay}" IsReadOnly="True" Background="#F1F5F9" FontWeight="Bold" Foreground="#2563EB" Style="{StaticResource ModernTextBox}" Height="30" Margin="0,0,0,8"/>
+                                <TextBox Text="{Binding AutoGeneratedNewItemCode, Mode=OneWay}" IsReadOnly="True" Background="#F1F5F9" FontWeight="Bold" Foreground="#B45309" Style="{StaticResource ModernTextBox}" Height="30" Margin="0,0,0,8"/>
 
                                 <TextBlock Text="Tên Mặt Hàng:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
                                 <TextBox Text="{Binding NewItemName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="32" Margin="0,0,0,8"/>
@@ -413,7 +572,7 @@
                                     </StackPanel>
                                 </Grid>
 
-                                <TextBlock Text="Ngưỡng Cảnh Báo Tồn Kho Thấp:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
+                                <TextBlock Text="Ngưỡng Cảnh Báo Tồn Kho Thấp (ĐVT bán lẻ):" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
                                 <TextBox Text="{Binding NewItemLowStockThreshold, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="32" Margin="0,0,0,10"/>
 
                                 <Button Command="{Binding AddNewFoodItemCommand}" Content="➕ LƯU MẶT HÀNG MỚI" Style="{StaticResource ModernButton}" Background="#2563EB" Height="36" FontWeight="Bold"/>
@@ -488,7 +647,7 @@
                                                                         </Grid.ColumnDefinitions>
                                                                         <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0">
                                                                             <StackPanel Orientation="Horizontal">
-                                                                                <TextBlock Text="{Binding ItemCode}" FontWeight="Bold" FontSize="11.5" Foreground="#2563EB" Margin="0,0,6,0"/>
+                                                                                <TextBlock Text="{Binding ItemCode}" FontWeight="Bold" FontSize="11.5" Foreground="#B45309" Margin="0,0,6,0"/>
                                                                                 <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="11.5" Foreground="#1E293B" TextTrimming="CharacterEllipsis"/>
                                                                             </StackPanel>
                                                                             <TextBlock Text="{Binding TrashedDateDisplay}" FontSize="9.5" Foreground="#64748B" Margin="0,3,0,0"/>
@@ -531,7 +690,232 @@
             </Grid>
 
             <!-- ====================================================================== -->
-            <!-- TAB 3: LỊCH SỬ NHẬP KHO (ĐÃ BỎ CHỮ FIFO)                               -->
+            <!-- MÀN 2: HÀNG GẦN HẾT (TỒN KHO <= NGƯỠNG CẢNH BÁO RIÊNG)                 -->
+            <!-- ====================================================================== -->
+            <Grid x:Name="SubTabLowStock">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Hidden"/>
+                        <Setter Property="IsHitTestVisible" Value="False"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ActiveTab}" Value="LowStock">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Setter Property="IsHitTestVisible" Value="True"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+                <Border Style="{StaticResource CardPanel}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="⚠️ MẶT HÀNG GẦN HẾT" FontSize="15" FontWeight="Bold" Foreground="#B45309"/>
+                                <TextBlock Text="Tồn kho đã chạm hoặc xuống dưới ngưỡng cảnh báo riêng của từng mặt hàng. Nháy đúp hoặc bấm ⚙️ để chỉnh ngưỡng."
+                                           FontSize="10.5" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="1" CornerRadius="8" Padding="12,6" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding LowStockItemsCount, StringFormat='{}{0} mặt hàng cần nhập'}" FontSize="11.5" FontWeight="Bold" Foreground="#B45309"/>
+                            </Border>
+                        </Grid>
+
+                        <Grid Grid.Row="1">
+                            <DataGrid x:Name="LowStockDataGrid" ItemsSource="{Binding LowStockItems}" AutoGenerateColumns="False" IsReadOnly="True"
+                                      helpers:TabProgressiveRender.IsDataRegion="True"
+                                      SelectionMode="Single" MouseDoubleClick="CatalogDataGrid_MouseDoubleClick">
+                                <DataGrid.RowStyle>
+                                    <Style TargetType="DataGridRow" BasedOn="{StaticResource InventoryRowStyle}">
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                    </Style>
+                                </DataGrid.RowStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Mã MH" Binding="{Binding ItemCode}" Width="Auto" FontWeight="Bold" Foreground="#475569"/>
+                                    <DataGridTextColumn Header="Tên Mặt Hàng" Binding="{Binding Name}" Width="Auto" FontWeight="Bold"/>
+                                    <DataGridTextColumn Header="Phân Loại" Binding="{Binding Category}" Width="Auto" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Tồn Kho" Binding="{Binding StockDisplay}" Width="Auto" FontWeight="Bold" Foreground="#DC2626"/>
+                                    <DataGridTextColumn Header="Ngưỡng (ĐVT lẻ)" Binding="{Binding LowStockThreshold}" Width="Auto" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Cần Nhập Thêm" Binding="{Binding RestockNeededDisplay}" Width="Auto" FontWeight="Bold" Foreground="#B45309"/>
+                                    <DataGridTextColumn Header="Giá Bán Lẻ" Binding="{Binding Price, StringFormat='{}{0:N0} đ'}" Width="Auto" FontWeight="Bold" Foreground="#B45309"/>
+                                    <DataGridTextColumn Header="ĐVT Nhập" Binding="{Binding DefaultImportUnit}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Hệ Số" Binding="{Binding DefaultConversionRate}" Width="Auto"/>
+                                    <DataGridTemplateColumn Header="Thao Tác" Width="Auto">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Content="⚙️ Sửa"
+                                                        Command="{Binding DataContext.EditFoodItemCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                        CommandParameter="{Binding}"
+                                                        Background="#FFFBEB" BorderBrush="#FCD34D" BorderThickness="1"
+                                                        Foreground="#92400E" Height="26" Padding="8,0"
+                                                        FontSize="10.5" FontWeight="Bold" Cursor="Hand"
+                                                        ToolTip="Chỉnh sửa mặt hàng và ngưỡng cảnh báo"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8"
+                                    Visibility="{Binding HasLowStockItems, Converter={StaticResource InvBoolToVis}}">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock Text="✅" FontSize="30" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    <TextBlock Text="Không có mặt hàng nào dưới ngưỡng cảnh báo" FontSize="13" FontWeight="Bold" Foreground="#15803D" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Tồn kho hiện tại của tất cả mặt hàng đều đang ở mức an toàn." FontSize="10.5" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- ====================================================================== -->
+            <!-- MÀN 3: LÔ HÀNG CẬN HẠN SỬ DỤNG (HSD <= HÔM NAY + 7 NGÀY)               -->
+            <!-- ====================================================================== -->
+            <Grid x:Name="SubTabNearExpiry">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Hidden"/>
+                        <Setter Property="IsHitTestVisible" Value="False"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ActiveTab}" Value="NearExpiry">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Setter Property="IsHitTestVisible" Value="True"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+                <Border Style="{StaticResource CardPanel}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="⏰ LÔ HÀNG CẬN HẠN SỬ DỤNG" FontSize="15" FontWeight="Bold" Foreground="#991B1B"/>
+                                <TextBlock Text="Các lô có hạn sử dụng trong 7 ngày tới hoặc đã hết hạn. Ưu tiên xử lý các lô này trước để tránh hao hụt."
+                                           FontSize="10.5" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1" CornerRadius="8" Padding="12,6" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding NearExpiryBatchesCount, StringFormat='{}{0} lô cận hạn'}" FontSize="11.5" FontWeight="Bold" Foreground="#B91C1C"/>
+                            </Border>
+                        </Grid>
+
+                        <Grid Grid.Row="1">
+                            <DataGrid ItemsSource="{Binding NearExpiryBatches}" AutoGenerateColumns="False" IsReadOnly="True"
+                                      helpers:TabProgressiveRender.IsDataRegion="True" SelectionMode="Single">
+                                <DataGrid.RowStyle>
+                                    <Style TargetType="DataGridRow" BasedOn="{StaticResource InventoryRowStyle}">
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding IsExpired}" Value="True"/>
+                                                    <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource Self}}" Value="False"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Background" Value="#FEF2F2"/>
+                                            </MultiDataTrigger>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding IsNearExpiry}" Value="True"/>
+                                                    <Condition Binding="{Binding IsExpired}" Value="False"/>
+                                                    <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource Self}}" Value="False"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Background" Value="#FFFBEB"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGrid.RowStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Mã Phiếu" Binding="{Binding ReceiptCode}" Width="Auto" FontWeight="Bold" Foreground="#475569"/>
+                                    <DataGridTextColumn Header="Mặt Hàng" Binding="{Binding FoodItemName}" Width="Auto" FontWeight="Bold"/>
+                                    <DataGridTextColumn Header="Số Lô" Binding="{Binding BatchNumber}" Width="Auto"/>
+                                    <DataGridTemplateColumn Header="Hạn Sử Dụng" Width="Auto">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding ExpiryDisplay}" FontWeight="Bold" VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="#B45309"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsExpired}" Value="True">
+                                                                    <Setter Property="Foreground" Value="#DC2626"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Tình Trạng" Width="Auto">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Border CornerRadius="6" Padding="7,2" HorizontalAlignment="Left">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Background" Value="#FFFBEB"/>
+                                                            <Setter Property="BorderBrush" Value="#FCD34D"/>
+                                                            <Setter Property="BorderThickness" Value="1"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsExpired}" Value="True">
+                                                                    <Setter Property="Background" Value="#FEE2E2"/>
+                                                                    <Setter Property="BorderBrush" Value="#FCA5A5"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="{Binding ExpiryStatusDisplay}" FontSize="10.5" FontWeight="Bold">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="#B45309"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsExpired}" Value="True">
+                                                                        <Setter Property="Foreground" Value="#B91C1C"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Border>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="SL Nhập" Binding="{Binding Quantity}" Width="Auto"/>
+                                    <DataGridTextColumn Header="ĐVT" Binding="{Binding ImportUnit}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Tổng Lẻ" Binding="{Binding TotalRetailUnits}" Width="Auto" FontWeight="Bold"/>
+                                    <DataGridTextColumn Header="Nhà Cung Cấp" Binding="{Binding Supplier}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Ngày Nhập" Binding="{Binding ImportDate, StringFormat='{}{0:dd/MM/yyyy HH:mm}'}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Ghi Chú" Binding="{Binding Note}" Width="Auto"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8"
+                                    Visibility="{Binding HasNearExpiryBatches, Converter={StaticResource InvBoolToVis}}">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock Text="✅" FontSize="30" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    <TextBlock Text="Không có lô hàng nào cận hạn trong 7 ngày tới" FontSize="13" FontWeight="Bold" Foreground="#15803D" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Tất cả lô hàng đang nhập kho đều có hạn sử dụng an toàn." FontSize="10.5" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- ====================================================================== -->
+            <!-- TAB 2: LỊCH SỬ NHẬP KHO                                                -->
             <!-- ====================================================================== -->
             <Grid x:Name="SubTabHistory">
                 <Grid.Style>
@@ -554,20 +938,23 @@
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Text="📜 LỊCH SỬ CÁC LÔ HÀNG ĐÃ NHẬP KHO" FontSize="15" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,10"/>
                         <DataGrid Grid.Row="1" ItemsSource="{Binding Data.InventoryBatches}" AutoGenerateColumns="False" IsReadOnly="True" helpers:TabProgressiveRender.IsDataRegion="True">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow" BasedOn="{StaticResource InventoryRowStyle}"/>
+                            </DataGrid.RowStyle>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Mã Phiếu" Binding="{Binding ReceiptCode}" Width="125" FontWeight="Bold"/>
-                                <DataGridTextColumn Header="Mặt Hàng" Binding="{Binding FoodItemName}" Width="160" FontWeight="Bold"/>
-                                <DataGridTextColumn Header="SL Nhập" Binding="{Binding Quantity}" Width="70"/>
-                                <DataGridTextColumn Header="ĐVT" Binding="{Binding ImportUnit}" Width="75"/>
-                                <DataGridTextColumn Header="Quy Đổi Lẻ" Binding="{Binding CalculationSummary}" Width="150"/>
-                                <DataGridTextColumn Header="Giá Nhập" Binding="{Binding ImportPrice, StringFormat='{}{0:N0} đ'}" Width="105"/>
-                                <DataGridTextColumn Header="Tổng Tiền" Binding="{Binding TotalCost, StringFormat='{}{0:N0} đ'}" Width="110" FontWeight="Bold" Foreground="#D97706"/>
-                                <DataGridTextColumn Header="Số Lô" Binding="{Binding BatchNumber}" Width="90"/>
-                                <DataGridTextColumn Header="Hạn Dùng" Binding="{Binding ExpiryDisplay}" Width="110"/>
-                                <DataGridTextColumn Header="Nhà Cung Cấp" Binding="{Binding Supplier}" Width="140"/>
-                                <DataGridTextColumn Header="Ngày Nhập" Binding="{Binding ImportDate, StringFormat='{}{0:dd/MM/yyyy HH:mm}'}" Width="125"/>
-                                <DataGridTextColumn Header="Người Nhập" Binding="{Binding ImportedBy}" Width="110"/>
-                                <DataGridTextColumn Header="Ghi Chú" Binding="{Binding Note}" Width="*"/>
+                                <DataGridTextColumn Header="Mã Phiếu" Binding="{Binding ReceiptCode}" Width="Auto" FontWeight="Bold"/>
+                                <DataGridTextColumn Header="Mặt Hàng" Binding="{Binding FoodItemName}" Width="Auto" FontWeight="Bold"/>
+                                <DataGridTextColumn Header="SL Nhập" Binding="{Binding Quantity}" Width="Auto"/>
+                                <DataGridTextColumn Header="ĐVT" Binding="{Binding ImportUnit}" Width="Auto"/>
+                                <DataGridTextColumn Header="Quy Đổi Lẻ" Binding="{Binding CalculationSummary}" Width="Auto"/>
+                                <DataGridTextColumn Header="Giá Nhập" Binding="{Binding ImportPrice, StringFormat='{}{0:N0} đ'}" Width="Auto"/>
+                                <DataGridTextColumn Header="Tổng Tiền" Binding="{Binding TotalCost, StringFormat='{}{0:N0} đ'}" Width="Auto" FontWeight="Bold" Foreground="#D97706"/>
+                                <DataGridTextColumn Header="Số Lô" Binding="{Binding BatchNumber}" Width="Auto"/>
+                                <DataGridTextColumn Header="Hạn Dùng" Binding="{Binding ExpiryDisplay}" Width="Auto"/>
+                                <DataGridTextColumn Header="Nhà Cung Cấp" Binding="{Binding Supplier}" Width="Auto"/>
+                                <DataGridTextColumn Header="Ngày Nhập" Binding="{Binding ImportDate, StringFormat='{}{0:dd/MM/yyyy HH:mm}'}" Width="Auto"/>
+                                <DataGridTextColumn Header="Người Nhập" Binding="{Binding ImportedBy}" Width="Auto"/>
+                                <DataGridTextColumn Header="Ghi Chú" Binding="{Binding Note}" Width="Auto"/>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>

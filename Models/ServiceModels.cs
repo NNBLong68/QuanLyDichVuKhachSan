@@ -76,6 +76,7 @@ namespace QuanLyDichVuKhachSan.Models
                     _retailUnit = value;
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RetailUnit)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StockDisplay)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RestockNeededDisplay)));
                 }
             }
         }
@@ -109,7 +110,25 @@ namespace QuanLyDichVuKhachSan.Models
         }
         public decimal AverageCostPrice { get; set; } = 0;     // GiaVonBinhQuan (tính theo bình quân gia quyền từ trigger)
         public int StockQuantity { get; set; }                 // SoLuongTonKho
-        public int LowStockThreshold { get; set; } = 10;       // NguongCanhBaoTon
+
+        private int _lowStockThreshold = 10;
+        public int LowStockThreshold                              // NguongCanhBaoTon
+        {
+            get => _lowStockThreshold;
+            set
+            {
+                int normalized = Math.Max(0, value);
+                if (_lowStockThreshold != normalized)
+                {
+                    _lowStockThreshold = normalized;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LowStockThreshold)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLowStock)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RestockNeeded)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RestockNeededDisplay)));
+                }
+            }
+        }
+
         public string ImageUrl { get; set; } = string.Empty;
         private string _status = "Đang phục vụ";
         public string Status
@@ -124,6 +143,7 @@ namespace QuanLyDichVuKhachSan.Models
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Status)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActive)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsAvailable)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLowStock)));
                 }
             }
         }
@@ -167,6 +187,8 @@ namespace QuanLyDichVuKhachSan.Models
         public bool IsLowStock => Status == "Đang phục vụ" && StockQuantity <= LowStockThreshold;
         public bool IsAvailable => StockQuantity > 0 && Status == "Đang phục vụ";
         public string StockDisplay => $"{StockQuantity} {RetailUnit}";
+        public int RestockNeeded => Math.Max(0, LowStockThreshold - StockQuantity);
+        public string RestockNeededDisplay => RestockNeeded > 0 ? $"{RestockNeeded} {RetailUnit}" : "Đủ hàng";
         public decimal ProfitMargin => Price > 0 ? (Price - AverageCostPrice) : 0;
         public double ProfitPercentage => Price > 0 ? (double)((Price - AverageCostPrice) / Price * 100) : 0;
 
@@ -248,6 +270,8 @@ namespace QuanLyDichVuKhachSan.Models
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLowStock)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsAvailable)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StockDisplay)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RestockNeeded)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RestockNeededDisplay)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RetailUnit)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DefaultImportUnit)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DefaultConversionRate)));
@@ -279,7 +303,20 @@ namespace QuanLyDichVuKhachSan.Models
 
         public string CalculationSummary => $"{Quantity} {ImportUnit} x {ConversionRate} = {TotalRetailUnits} {RetailUnit}";
         public string ExpiryDisplay => ExpiryDate.HasValue ? ExpiryDate.Value.ToString("dd/MM/yyyy") : "---";
-        public bool IsNearExpiry => ExpiryDate.HasValue && ExpiryDate.Value <= DateTime.Today.AddDays(7);
+        public bool IsExpired => ExpiryDate.HasValue && ExpiryDate.Value.Date < DateTime.Today;
+        public bool IsNearExpiry => ExpiryDate.HasValue && ExpiryDate.Value.Date <= DateTime.Today.AddDays(7);
+        public int? DaysUntilExpiry => ExpiryDate.HasValue ? (int)(ExpiryDate.Value.Date - DateTime.Today).TotalDays : null;
+        public string ExpiryStatusDisplay
+        {
+            get
+            {
+                if (!ExpiryDate.HasValue) return "Không có HSD";
+                int days = (int)(ExpiryDate.Value.Date - DateTime.Today).TotalDays;
+                if (days < 0) return $"Đã hết hạn {-days} ngày";
+                if (days == 0) return "Hết hạn hôm nay";
+                return $"Còn {days} ngày";
+            }
+        }
     }
 
     public class WarehouseReceiptDraftItem : INotifyPropertyChanged

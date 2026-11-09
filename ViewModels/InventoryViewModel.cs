@@ -17,13 +17,23 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
         public bool IsAdmin => Auth.IsAdmin;
 
-        // Quản lý Tab điều hướng
-        private string _activeTab = "Receipt"; // "Receipt", "Catalog", "History", "ProfitReport"
+        // Quản lý Tab điều hướng: "Warehouse", "LowStock", "NearExpiry", "Receipt", "History"
+        private string _activeTab = "Warehouse";
         public string ActiveTab
         {
             get => _activeTab;
-            set => SetProperty(ref _activeTab, value);
+            set
+            {
+                if (SetProperty(ref _activeTab, value))
+                {
+                    OnPropertyChanged(nameof(IsReceiptTabActive));
+                    OnPropertyChanged(nameof(IsHistoryTabActive));
+                }
+            }
         }
+
+        public bool IsReceiptTabActive => ActiveTab == "Receipt";
+        public bool IsHistoryTabActive => ActiveTab == "History";
 
         // =======================================================================
         // A. QUẢN LÝ DANH MỤC MẶT HÀNG (CATALOG) - Debounced 180ms
@@ -42,6 +52,15 @@ namespace QuanLyDichVuKhachSan.ViewModels
         }
 
         public ObservableRangeCollection<FoodItem> FilteredCatalogItems { get; } = new();
+
+        // Danh sách mặt hàng gần hết (tồn kho <= ngưỡng cảnh báo riêng)
+        public ObservableRangeCollection<FoodItem> LowStockItems { get; } = new();
+
+        // Danh sách lô hàng cận hạn sử dụng (HSD <= hôm nay + 7 ngày, bao gồm đã hết hạn)
+        public ObservableRangeCollection<InventoryBatch> NearExpiryBatches { get; } = new();
+
+        public bool HasLowStockItems => LowStockItems.Count > 0;
+        public bool HasNearExpiryBatches => NearExpiryBatches.Count > 0;
 
         // Form thêm mặt hàng mới
         private string _newItemName = "";
@@ -376,6 +395,10 @@ namespace QuanLyDichVuKhachSan.ViewModels
             {
                 if (p is string tab && _activeTab != tab)
                 {
+                    // 3 card điều hướng luôn lấy dữ liệu mới nhất trước khi hiển thị.
+                    if (tab == "Warehouse" || tab == "LowStock" || tab == "NearExpiry")
+                        RefreshAll();
+
                     if (RequestSubTabTransition != null)
                         RequestSubTabTransition.Invoke(tab);
                     else
@@ -530,11 +553,50 @@ namespace QuanLyDichVuKhachSan.ViewModels
             if (expiredTrash.Count > 0) NotifyTrashChanged();
 
             ApplyCatalogFilter();
+            RefreshLowStockItems();
+            RefreshNearExpiryBatches();
             OnPropertyChanged(nameof(TotalDryItemsCount));
             OnPropertyChanged(nameof(TotalStockUnits));
             OnPropertyChanged(nameof(TotalStockValue));
             OnPropertyChanged(nameof(NearExpiryBatchesCount));
             OnPropertyChanged(nameof(LowStockItemsCount));
+        }
+
+        private void RefreshLowStockItems()
+        {
+            var result = Data.FoodItems
+                .Where(x => x.IsLowStock)
+                .OrderBy(x => x.StockQuantity)
+                .ThenBy(x => x.Name)
+                .ToList();
+
+            LowStockItems.ReplaceRange(result);
+            OnPropertyChanged(nameof(HasLowStockItems));
+        }
+
+        private void RefreshNearExpiryBatches()
+        {
+            var result = Data.InventoryBatches
+                .Where(x => x.IsNearExpiry)
+                .OrderBy(x => x.ExpiryDate ?? DateTime.MaxValue)
+                .ThenBy(x => x.FoodItemName)
+                .ToList();
+
+            NearExpiryBatches.ReplaceRange(result);
+            OnPropertyChanged(nameof(HasNearExpiryBatches));
+        }
+
+        /// <summary>
+        /// Đưa màn kho hàng về view mặc định (danh sách mặt hàng đang quản lý).
+        /// </summary>
+        public void ShowDefaultView()
+        {
+            if (ActiveTab == "Warehouse") return;
+
+            if (RequestSubTabTransition != null)
+                RequestSubTabTransition.Invoke("Warehouse");
+            else
+                ActiveTab = "Warehouse";
         }
 
         public void ApplyCatalogFilter()

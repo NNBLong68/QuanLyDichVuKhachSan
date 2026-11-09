@@ -55,7 +55,7 @@ namespace QuanLyDichVuKhachSan.Services
                 System.Diagnostics.Debug.WriteLine($"[Config Warning] Không thể đọc appsettings.json: {ex.Message}");
             }
 
-            return @"Server=.\SQLEXPRESS01;Database=QuanLyDichVuKhachSan;Trusted_Connection=True;TrustServerCertificate=True;Pooling=true;Min Pool Size=5;Max Pool Size=100;Connect Timeout=5;MultipleActiveResultSets=True;Packet Size=8192;Application Name=QuanLyDichVuKhachSan;";
+            return @"Server=.;Database=QuanLyDichVuKhachSan;Trusted_Connection=True;TrustServerCertificate=True;Pooling=true;Min Pool Size=5;Max Pool Size=100;Connect Timeout=5;MultipleActiveResultSets=True;Packet Size=8192;Application Name=QuanLyDichVuKhachSan;";
         }
 
         #region Helper Safe Methods for Column Mapping

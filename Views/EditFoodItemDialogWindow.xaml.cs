@@ -20,6 +20,7 @@ namespace QuanLyDichVuKhachSan.Views
             TxtPrice.Text = _foodItem.Price.ToString("N0");
             TxtDefaultImportUnit.Text = string.IsNullOrWhiteSpace(_foodItem.DefaultImportUnit) ? "Thùng" : _foodItem.DefaultImportUnit;
             TxtDefaultConversionRate.Text = (_foodItem.DefaultConversionRate > 0 ? _foodItem.DefaultConversionRate : 24).ToString();
+            TxtLowStockThreshold.Text = _foodItem.LowStockThreshold.ToString();
 
             // Set Category
             if (_foodItem.Category == "Thức uống" || _foodItem.IsDrink)
@@ -67,6 +68,12 @@ namespace QuanLyDichVuKhachSan.Views
                 return;
             }
 
+            if (!int.TryParse(TxtLowStockThreshold.Text.Trim(), out int lowStockThreshold) || lowStockThreshold < 0)
+            {
+                MessageBox.Show("Ngưỡng cảnh báo tồn kho thấp phải là số nguyên lớn hơn hoặc bằng 0!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             string category = (CmbCategory.SelectedIndex == 1) ? "Thức uống" : "Đồ ăn";
             string retailUnit = TxtRetailUnit.Text.Trim();
 
@@ -76,16 +83,18 @@ namespace QuanLyDichVuKhachSan.Views
             _foodItem.Price = price;
             _foodItem.DefaultImportUnit = defaultImportUnit;
             _foodItem.DefaultConversionRate = conversionRate;
+            _foodItem.LowStockThreshold = lowStockThreshold;
 
             // Đồng bộ xuống CSDL SQL Server (Table MonAn)
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "UPDATE MonAn SET TenMon = @Ten, DanhMuc = @Loai, DonViTinh = @DVT, GiaBan = @Gia, DonViNhapMacDinh = @DonViNhap, HeSoQuyDoiMacDinh = @HeSoQuyDoi WHERE Id = @Id",
+                "UPDATE MonAn SET TenMon = @Ten, DanhMuc = @Loai, DonViTinh = @DVT, GiaBan = @Gia, DonViNhapMacDinh = @DonViNhap, HeSoQuyDoiMacDinh = @HeSoQuyDoi, MucTonToiThieu = @MucTonToiThieu WHERE Id = @Id",
                 new Microsoft.Data.SqlClient.SqlParameter("@Ten", _foodItem.Name),
                 new Microsoft.Data.SqlClient.SqlParameter("@Loai", _foodItem.Category),
                 new Microsoft.Data.SqlClient.SqlParameter("@DVT", _foodItem.RetailUnit),
                 new Microsoft.Data.SqlClient.SqlParameter("@Gia", _foodItem.Price),
                 new Microsoft.Data.SqlClient.SqlParameter("@DonViNhap", _foodItem.DefaultImportUnit),
                 new Microsoft.Data.SqlClient.SqlParameter("@HeSoQuyDoi", _foodItem.DefaultConversionRate),
+                new Microsoft.Data.SqlClient.SqlParameter("@MucTonToiThieu", _foodItem.LowStockThreshold),
                 new Microsoft.Data.SqlClient.SqlParameter("@Id", _foodItem.Id)
             );
 

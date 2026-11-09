@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Chỉnh Sửa Mặt Hàng - Dalat Hotel" 
-        Height="520" Width="440" 
+        Height="580" Width="440" 
         WindowStartupLocation="CenterScreen"
         Background="#0F172A"
         ResizeMode="NoResize">
@@ -39,7 +39,7 @@
                 <TextBox x:Name="TxtPrice" Style="{StaticResource ModernTextBox}" Height="34" FontWeight="Bold" Foreground="#D97706" Margin="0,0,0,10"/>
 
                 <!-- ĐVT Lúc Nhập & Hệ Số Quy Đổi -->
-                <Grid Margin="0,0,0,18">
+                <Grid Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="1.2*"/>
                         <ColumnDefinition Width="10"/>
@@ -54,6 +54,10 @@
                         <TextBox x:Name="TxtDefaultConversionRate" Style="{StaticResource ModernTextBox}" Height="34" FontWeight="Bold" Foreground="#0284C7"/>
                     </StackPanel>
                 </Grid>
+
+                <!-- Ngưỡng cảnh báo tồn kho thấp -->
+                <TextBlock Text="Ngưỡng Cảnh Báo Tồn Kho Thấp (ĐVT bán lẻ):" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
+                <TextBox x:Name="TxtLowStockThreshold" Style="{StaticResource ModernTextBox}" Height="34" FontWeight="Bold" Foreground="#B45309" Margin="0,0,0,18"/>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="Hủy Bỏ" Click="BtnCancel_Click" Height="36" Width="95" Margin="0,0,10,0" Style="{StaticResource OutlineButton}"/>

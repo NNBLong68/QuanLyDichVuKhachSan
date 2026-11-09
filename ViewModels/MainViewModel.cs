@@ -272,7 +272,15 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 }
 
                 if (_currentTab == tabName)
+                {
+                    // Bấm lại tab Kho Hàng: luôn quay về màn danh sách kho mặc định.
+                    if (tabName == "Inventory")
+                    {
+                        InventoryVM.ShowDefaultView();
+                        InventoryVM.RefreshAll();
+                    }
                     return;
+                }
 
                 Action refreshAction = () => RefreshTabData(tabName);
 
@@ -302,6 +310,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     break;
                 case "Inventory":
                     InventoryVM.RefreshAll();
+                    InventoryVM.ShowDefaultView();
                     break;
                 case "Food":
                     FoodVM.ApplyFoodFilter();
