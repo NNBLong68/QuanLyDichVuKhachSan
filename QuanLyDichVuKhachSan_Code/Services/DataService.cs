@@ -966,7 +966,6 @@ namespace QuanLyDichVuKhachSan.Services
 
         public List<ServiceRevenueSummary> GetServiceRevenueSummaries(DateTime? start = null, DateTime? end = null)
         {
-            var roomInvoices = RoomInvoices.AsEnumerable();
             var foodList = FoodOrders.Where(x => x.DaThanhToan && x.Status != "Đã hủy");
             var eventList = EventBookings.Where(x => x.DaThanhToan
                 && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy"))
@@ -979,7 +978,6 @@ namespace QuanLyDichVuKhachSan.Services
 
             if (start.HasValue && end.HasValue)
             {
-                roomInvoices = roomInvoices.Where(x => x.InvoiceDate >= start.Value && x.InvoiceDate <= end.Value);
                 foodList = foodList.Where(x => x.CreatedAt >= start.Value && x.CreatedAt <= end.Value);
                 eventList = eventList.Where(x => x.StartTime >= start.Value && x.StartTime <= end.Value);
                 vehicleList = vehicleList.Where(x => x.RentalDate >= start.Value && x.RentalDate <= end.Value);
@@ -987,19 +985,17 @@ namespace QuanLyDichVuKhachSan.Services
                 laundryList = laundryList.Where(x => x.ReceivedDate >= start.Value && x.ReceivedDate <= end.Value);
             }
 
-            decimal roomRev = roomInvoices.Sum(x => x.RoomCost);
             decimal foodRev = foodList.Sum(x => x.TotalAmount);
             decimal eventRev = eventList.Sum(x => x.FinalTotal);
             decimal vehicleRev = vehicleList.Sum(x => x.RentalFee + x.AdditionalCost);
             decimal parkingRev = parkingList.Sum(x => x.ParkingFee);
             decimal laundryRev = laundryList.Sum(x => x.HotelEarnings);
 
-            decimal totalAll = roomRev + foodRev + eventRev + vehicleRev + parkingRev + laundryRev;
+            decimal totalAll = foodRev + eventRev + vehicleRev + parkingRev + laundryRev;
             if (totalAll == 0) totalAll = 1;
 
             return new List<ServiceRevenueSummary>
             {
-                new() { ServiceName = "Tiền phòng", ServiceType = "Nội bộ", TransactionCount = roomInvoices.Count(), TotalRevenue = roomRev, Percentage = Math.Round((double)(roomRev / totalAll * 100), 1) },
                 new() { ServiceName = "Ăn Uống", ServiceType = "Tự túc", TransactionCount = foodList.Count(), TotalRevenue = foodRev, Percentage = Math.Round((double)(foodRev / totalAll * 100), 1) },
                 new() { ServiceName = "Sảnh & Sự Kiện", ServiceType = "Tự túc", TransactionCount = eventList.Count(), TotalRevenue = eventRev, Percentage = Math.Round((double)(eventRev / totalAll * 100), 1) },
                 new() { ServiceName = "Cho Thuê Xe Máy", ServiceType = "Tự túc", TransactionCount = vehicleList.Count(), TotalRevenue = vehicleRev, Percentage = Math.Round((double)(vehicleRev / totalAll * 100), 1) },

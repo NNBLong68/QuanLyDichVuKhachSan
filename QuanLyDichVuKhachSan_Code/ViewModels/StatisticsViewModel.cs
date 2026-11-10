@@ -104,7 +104,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             var (startDate, endDate) = GetDateRange();
             bool isAllTime = SelectedPeriod == "Tất cả thời gian";
 
-            string[] defaultColors = new[] { "#0284C7", "#7C3AED", "#F59E0B", "#10B981", "#EC4899" };
+            string[] defaultColors = new[] { "#7C3AED", "#F59E0B", "#10B981", "#EC4899", "#0284C7" };
             int colorIdx = 0;
             var summaries = isAllTime 
                 ? Data.GetServiceRevenueSummaries() 
