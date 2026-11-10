@@ -100,5 +100,55 @@ namespace QuanLyDichVuKhachSan.Views
                 }
             }
         }
+
+        private void StaffRow_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (sender is DataGridRow row && row.DataContext is QuanLyDichVuKhachSan.Models.Staff staff)
+            {
+                if (DataContext is StaffViewModel vm)
+                {
+                    // Tự động chọn nhân viên này
+                    vm.SelectedStaffToAssign = staff;
+
+                    var cm = new ContextMenu();
+
+                    var headerItem = new MenuItem
+                    {
+                        Header = $"👤 {staff.FullName} ({staff.Code}) - {staff.Position}",
+                        FontWeight = FontWeights.Bold,
+                        IsEnabled = false
+                    };
+                    cm.Items.Add(headerItem);
+                    cm.Items.Add(new Separator());
+
+                    var editItem = new MenuItem
+                    {
+                        Header = "✏️ Sửa thông tin nhân viên",
+                        FontWeight = FontWeights.SemiBold
+                    };
+                    editItem.Click += (s, ev) =>
+                    {
+                        vm.StartEditStaff(staff);
+                    };
+                    cm.Items.Add(editItem);
+
+                    var deleteItem = new MenuItem
+                    {
+                        Header = "🗑️ Xóa nhân viên (Cho nghỉ việc)",
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38))
+                    };
+                    deleteItem.Click += (s, ev) =>
+                    {
+                        vm.DeleteStaffCommand.Execute(staff);
+                    };
+                    cm.Items.Add(deleteItem);
+
+                    row.ContextMenu = cm;
+                    cm.IsOpen = true;
+                    e.Handled = true;
+                }
+            }
+        }
     }
 }

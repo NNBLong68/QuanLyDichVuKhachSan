@@ -1260,8 +1260,8 @@ namespace QuanLyDichVuKhachSan.Models
             }
         }
 
-        public bool CanDispatch => (Status == LaundryStatus.PendingDispatch || !HasPartner) && Status != LaundryStatus.Completed && Status != LaundryStatus.Cancelled;
-        public bool CanReturn => Status == LaundryStatus.Washing || Status == LaundryStatus.Washed;
+        public bool CanDispatch => Status == LaundryStatus.PendingDispatch;
+        public bool CanReturn => Status == LaundryStatus.Washing;
         public bool CanCancel => Status == LaundryStatus.PendingDispatch;
 
         public string PaymentMethod { get; set; } = "Ghi nợ vào phòng"; // Thanh toán trực tiếp / Ghi nợ vào phòng
@@ -1312,7 +1312,6 @@ namespace QuanLyDichVuKhachSan.Models
             {
                 LaundryStatus.PendingDispatch => "Chờ giao tiệm",
                 LaundryStatus.Washing => "Đang giặt",
-                LaundryStatus.Washed => "Giặt xong",
                 LaundryStatus.Completed => "Hoàn tất",
                 LaundryStatus.Cancelled => "Đã hủy",
                 _ => "Chờ giao tiệm"

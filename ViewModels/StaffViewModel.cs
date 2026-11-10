@@ -110,6 +110,46 @@ namespace QuanLyDichVuKhachSan.ViewModels
         private decimal _newStaffSalary = 8000000;
         public decimal NewStaffSalary { get => _newStaffSalary; set => SetProperty(ref _newStaffSalary, value); }
 
+        // Sửa thông tin nhân viên
+        private bool _isEditingStaff;
+        public bool IsEditingStaff
+        {
+            get => _isEditingStaff;
+            set => SetProperty(ref _isEditingStaff, value);
+        }
+
+        private Staff? _editingStaff;
+        public Staff? EditingStaff
+        {
+            get => _editingStaff;
+            set => SetProperty(ref _editingStaff, value);
+        }
+
+        private string _editStaffCode = "";
+        public string EditStaffCode { get => _editStaffCode; set => SetProperty(ref _editStaffCode, value); }
+
+        private string _editStaffName = "";
+        public string EditStaffName { get => _editStaffName; set => SetProperty(ref _editStaffName, value); }
+
+        private string _editStaffCccd = "";
+        public string EditStaffCccd { get => _editStaffCccd; set => SetProperty(ref _editStaffCccd, value); }
+
+        private string _editStaffPhone = "";
+        public string EditStaffPhone { get => _editStaffPhone; set => SetProperty(ref _editStaffPhone, value); }
+
+        private string _editStaffPosition = "Lễ tân";
+        public string EditStaffPosition { get => _editStaffPosition; set => SetProperty(ref _editStaffPosition, value); }
+
+        private decimal _editStaffSalary = 8000000;
+        public decimal EditStaffSalary { get => _editStaffSalary; set => SetProperty(ref _editStaffSalary, value); }
+
+        // Sao lưu thông tin ban đầu để khôi phục khi ấn nút Hủy
+        private string _origStaffName = "";
+        private string _origStaffCccd = "";
+        private string _origStaffPhone = "";
+        private string _origStaffPosition = "";
+        private decimal _origStaffSalary = 8000000;
+
         // Selection for assignment
         private Staff? _selectedStaffToAssign;
         public Staff? SelectedStaffToAssign
@@ -162,6 +202,10 @@ namespace QuanLyDichVuKhachSan.ViewModels
         // Commands
         public ICommand AddStaffCommand { get; }
         public ICommand DeleteStaffCommand { get; }
+        public ICommand StartEditStaffCommand { get; }
+        public ICommand CancelEditStaffCommand { get; }
+        public ICommand CloseEditStaffCommand { get; }
+        public ICommand ConfirmEditStaffCommand { get; }
         public ICommand AssignSelectedSlotCommand { get; }
         public ICommand ClearSlotCommand { get; }
         public ICommand PrevWeekCommand { get; }
@@ -172,6 +216,10 @@ namespace QuanLyDichVuKhachSan.ViewModels
         {
             AddStaffCommand = new RelayCommand(AddStaff);
             DeleteStaffCommand = new RelayCommand(DeleteStaff);
+            StartEditStaffCommand = new RelayCommand(StartEditStaff);
+            CancelEditStaffCommand = new RelayCommand(CancelEditStaff);
+            CloseEditStaffCommand = new RelayCommand(CloseEditStaff);
+            ConfirmEditStaffCommand = new RelayCommand(ConfirmEditStaff);
             AssignSelectedSlotCommand = new RelayCommand(AssignSelectedSlots);
             ClearSlotCommand = new RelayCommand(_ => ClearSelectedSlots());
 
@@ -610,6 +658,125 @@ END";
                     MessageBox.Show($"Đã chuyển trạng thái nhân viên [{staff.FullName}] sang 'Đã nghỉ việc' thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
+        }
+
+        public void StartEditStaff(object? parameter)
+        {
+            var staff = parameter as Staff ?? SelectedStaffToAssign;
+            if (staff == null)
+            {
+                MessageBox.Show("Vui lòng click chọn một nhân viên trong danh sách để sửa thông tin!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            EditingStaff = staff;
+            SelectedStaffToAssign = staff;
+
+            EditStaffCode = staff.Code;
+            EditStaffName = staff.FullName;
+            EditStaffCccd = staff.IdentityCard;
+            EditStaffPhone = staff.PhoneNumber;
+            EditStaffPosition = string.IsNullOrWhiteSpace(staff.Position) ? "Lễ tân" : staff.Position;
+            EditStaffSalary = staff.BaseSalary;
+
+            _origStaffName = staff.FullName;
+            _origStaffCccd = staff.IdentityCard;
+            _origStaffPhone = staff.PhoneNumber;
+            _origStaffPosition = EditStaffPosition;
+            _origStaffSalary = staff.BaseSalary;
+
+            IsEditingStaff = true;
+        }
+
+        public void CancelEditStaff(object? parameter)
+        {
+            if (EditingStaff == null) return;
+            EditStaffName = _origStaffName;
+            EditStaffCccd = _origStaffCccd;
+            EditStaffPhone = _origStaffPhone;
+            EditStaffPosition = _origStaffPosition;
+            EditStaffSalary = _origStaffSalary;
+        }
+
+        public void CloseEditStaff(object? parameter)
+        {
+            IsEditingStaff = false;
+            EditingStaff = null;
+        }
+
+        public void ConfirmEditStaff(object? parameter)
+        {
+            if (EditingStaff == null) return;
+
+            if (string.IsNullOrWhiteSpace(EditStaffName) || string.IsNullOrWhiteSpace(EditStaffCccd) || string.IsNullOrWhiteSpace(EditStaffPhone))
+            {
+                MessageBox.Show("Vui lòng nhập đầy đủ: Họ & Tên, CCCD và Số điện thoại nhân viên!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (EditStaffName.Any(char.IsDigit))
+            {
+                MessageBox.Show("Họ & Tên nhân viên không được chứa chữ số!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (EditStaffPhone.Any(c => !char.IsDigit(c)))
+            {
+                MessageBox.Show("Số điện thoại chỉ được chứa các chữ số (0-9)!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (EditStaffSalary <= 0)
+            {
+                MessageBox.Show("Lương cơ bản phải lớn hơn 0 VNĐ!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var oldName = EditingStaff.FullName;
+            EditingStaff.FullName = EditStaffName.Trim();
+            EditingStaff.IdentityCard = EditStaffCccd.Trim();
+            EditingStaff.PhoneNumber = EditStaffPhone.Trim();
+            EditingStaff.Position = EditStaffPosition.Trim();
+            EditingStaff.BaseSalary = EditStaffSalary;
+
+            // Cập nhật tên trong các ca trực nếu nhân viên này đang có ca trực
+            foreach (var assign in Data.ShiftAssignments.Where(a => a.StaffId == EditingStaff.Id))
+            {
+                assign.StaffName = EditingStaff.FullName;
+            }
+            foreach (var day in WeeklyDays)
+            {
+                if (day.MorningShift.StaffId == EditingStaff.Id) day.MorningShift.StaffName = EditingStaff.FullName;
+                if (day.AfternoonShift.StaffId == EditingStaff.Id) day.AfternoonShift.StaffName = EditingStaff.FullName;
+                if (day.NightShift.StaffId == EditingStaff.Id) day.NightShift.StaffName = EditingStaff.FullName;
+            }
+
+            // Cập nhật CSDL SQL Server (Table NhanVien & TaiKhoan)
+            string sql = @"
+UPDATE NhanVien 
+SET HoTen = @HoTen, CCCD = @CCCD, SoDienThoai = @Phone, ChucVu = @ChucVu, LuongCoBan = @Luong
+WHERE Id = @Id OR MaNV = @MaNV;
+UPDATE TaiKhoan SET HoTen = @HoTen WHERE HoTen = @OldHoTen;";
+
+            _ = DatabaseService.Instance.ExecuteNonQueryAsync(
+                sql,
+                new SqlParameter("@Id", EditingStaff.Id),
+                new SqlParameter("@MaNV", EditingStaff.Code),
+                new SqlParameter("@HoTen", EditingStaff.FullName),
+                new SqlParameter("@CCCD", EditingStaff.IdentityCard),
+                new SqlParameter("@Phone", EditingStaff.PhoneNumber),
+                new SqlParameter("@ChucVu", EditingStaff.Position),
+                new SqlParameter("@Luong", EditingStaff.BaseSalary),
+                new SqlParameter("@OldHoTen", oldName)
+            );
+
+            OnPropertyChanged(nameof(SelectedStaffDisplayName));
+            OnPropertyChanged(nameof(CurrentDutyStaffDisplay));
+
+            MessageBox.Show($"Cập nhật thông tin nhân viên [{EditingStaff.FullName} - {EditingStaff.Code}] thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            IsEditingStaff = false;
+            EditingStaff = null;
         }
     }
 }

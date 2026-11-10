@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -1222,7 +1222,7 @@ namespace QuanLyDichVuKhachSan.Services
                             DaThanhToan = CASE WHEN TrangThai = N'Đã hủy' THEN DaThanhToan ELSE 1 END,
                             NguoiThanhToanId = CASE WHEN TrangThai = N'Đã hủy' THEN NguoiThanhToanId ELSE ISNULL(NguoiThanhToanId, ISNULL(NguoiTaoId, 1)) END,
                             ThoiGianThanhToan = CASE WHEN TrangThai = N'Đã hủy' THEN ThoiGianThanhToan ELSE ISNULL(ThoiGianThanhToan, ISNULL(NgayTraThucTe, NgayHenTra)) END
-                        WHERE NgayHenTra < @Today AND (DaThanhToan = 0 OR TrangThai IN (N'Chờ giao đối tác', N'Đang giặt', N'Giặt xong'));
+                        WHERE NgayHenTra < @Today AND TrangThai <> N'Đã hủy' AND (DaThanhToan = 0 OR TrangThai IN (N'Chờ giao đối tác', N'Đang giặt'));
                     END";
                 using var cmd = new SqlCommand(sql, conn);
                 cmd.ExecuteNonQuery();
@@ -2197,11 +2197,11 @@ namespace QuanLyDichVuKhachSan.Services
                     else if (serviceStr.Contains("Ủi") || serviceStr.Contains("ủi")) serviceType = LaundryServiceType.Ironing;
 
                     string statusStr = SafeGetString(reader, "TrangThai");
-                    LaundryStatus status = LaundryStatus.Washing;
+                    LaundryStatus status = LaundryStatus.PendingDispatch;
                     if (statusStr.Contains("hủy") || statusStr.Contains("Hủy")) status = LaundryStatus.Cancelled;
                     else if (statusStr.Contains("Hoàn tất") || statusStr.Contains("hoàn tất")) status = LaundryStatus.Completed;
-                    else if (statusStr.Contains("xong") || statusStr.Contains("nhận") || statusStr.Contains("lấy")) status = LaundryStatus.Washed;
-                    else if (statusStr.Contains("Chờ") || statusStr.Contains("chờ") || partnerId == 0) status = LaundryStatus.PendingDispatch;
+                    else if (statusStr.Contains("giặt") || statusStr.Contains("Giặt") || (partnerId > 0 && !statusStr.Contains("Chờ"))) status = LaundryStatus.Washing;
+                    else status = LaundryStatus.PendingDispatch;
 
                     int creatorId = SafeGetInt(reader, "NguoiTaoId");
                     int? payerId = SafeGetNullableInt(reader, "NguoiThanhToanId");

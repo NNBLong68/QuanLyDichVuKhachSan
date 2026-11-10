@@ -290,7 +290,6 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     OnPropertyChanged(nameof(IsAllStatusFilter));
                     OnPropertyChanged(nameof(IsPendingDispatchStatusFilter));
                     OnPropertyChanged(nameof(IsWashingStatusFilter));
-                    OnPropertyChanged(nameof(IsWashedStatusFilter));
                     OnPropertyChanged(nameof(IsCompletedStatusFilter));
                     OnPropertyChanged(nameof(IsCancelledStatusFilter));
                     ApplyLaundryFilter();
@@ -301,7 +300,6 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public bool IsAllStatusFilter { get => StatusFilter == "All"; set { if (value) StatusFilter = "All"; } }
         public bool IsPendingDispatchStatusFilter { get => StatusFilter == "PendingDispatch"; set { if (value) StatusFilter = "PendingDispatch"; } }
         public bool IsWashingStatusFilter { get => StatusFilter == "Washing"; set { if (value) StatusFilter = "Washing"; } }
-        public bool IsWashedStatusFilter { get => StatusFilter == "Washed"; set { if (value) StatusFilter = "Washed"; } }
         public bool IsCompletedStatusFilter { get => StatusFilter == "Completed"; set { if (value) StatusFilter = "Completed"; } }
         public bool IsCancelledStatusFilter { get => StatusFilter == "Cancelled"; set { if (value) StatusFilter = "Cancelled"; } }
 
@@ -546,7 +544,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
         {
             var currentSelectedId = SelectedOrderToReturn?.Id;
             PendingReturns.Clear();
-            foreach (var order in Data.LaundryOrders.Where(x => x.Status == LaundryStatus.Washing || x.Status == LaundryStatus.Washed))
+            foreach (var order in Data.LaundryOrders.Where(x => x.Status == LaundryStatus.Washing))
             {
                 PendingReturns.Add(order);
             }
@@ -562,34 +560,24 @@ namespace QuanLyDichVuKhachSan.ViewModels
             ApplyLaundryFilter();
         }
 
+        private readonly HashSet<string> _notifiedOrders = new();
+
         private void CheckLaundryAppointments()
         {
             var now = DateTime.Now;
-            bool hasChanged = false;
             foreach (var order in Data.LaundryOrders.Where(o => o.Status == LaundryStatus.Washing).ToList())
             {
                 var diff = order.AppointmentDate - now;
-                // Trước 15 phút hoặc đã qua giờ hẹn trả: thông báo và chuyển sang 'Giặt xong'
-                if (diff.TotalMinutes <= 15)
+                // Trước 15 phút hoặc đã qua giờ hẹn trả: nhắc nhở nhân viên liên hệ tiệm lấy đồ và gọi khách nhận
+                if (diff.TotalMinutes <= 15 && !_notifiedOrders.Contains(order.OrderCode))
                 {
-                    order.Status = LaundryStatus.Washed;
-                    hasChanged = true;
-                    _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                        "UPDATE DonGiatUi SET TrangThai = N'Giặt xong' WHERE Id = @Id OR MaDon = @Ma",
-                        new Microsoft.Data.SqlClient.SqlParameter("@Id", order.Id),
-                        new Microsoft.Data.SqlClient.SqlParameter("@Ma", order.OrderCode)
-                    );
+                    _notifiedOrders.Add(order.OrderCode);
                     NotificationService.Instance.AddNotification(
                         "Đến Giờ Trả Đồ Giặt Ủi",
-                        $"Đơn [{order.OrderCode}] của khách phòng [{order.RoomNumber}] ({order.CustomerName}) đã đến giờ trả đồ cho khách! Trạng thái chuyển sang: GIẶT XONG.",
+                        $"Đơn [{order.OrderCode}] của khách phòng [{order.RoomNumber}] ({order.CustomerName}) sắp/đã đến giờ hẹn trả đồ cho khách!",
                         NotificationType.LaundryReturn
                     );
                 }
-            }
-
-            if (hasChanged)
-            {
-                RefreshPendingReturns();
             }
         }
 

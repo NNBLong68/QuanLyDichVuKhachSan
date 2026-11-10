@@ -831,7 +831,16 @@ namespace QuanLyDichVuKhachSan.Services
             // 3. Sảnh & Sự kiện
             foreach (var eb in EventBookings)
             {
-                decimal amt = (eb.DaThanhToan || eb.PaymentStatus == "Hoàn tất" || eb.PaymentStatus == "Ghi nợ vào phòng") ? eb.FinalTotal : eb.DepositAmount;
+                decimal amt;
+                if (eb.OrderStatus != null && eb.OrderStatus.StartsWith("Đã hủy"))
+                {
+                    amt = eb.OrderStatus == "Đã hủy - Không hoàn cọc" ? eb.DepositAmount : 0;
+                }
+                else
+                {
+                    amt = (eb.DaThanhToan || eb.PaymentStatus == "Hoàn tất" || eb.PaymentStatus == "Ghi nợ vào phòng") ? eb.FinalTotal : eb.DepositAmount;
+                }
+
                 string creator = !string.IsNullOrWhiteSpace(eb.RecordedBy) ? eb.RecordedBy : (eb.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Trần Thị Mai");
                 string payer = !string.IsNullOrWhiteSpace(eb.PaidByStaffName) ? eb.PaidByStaffName : (!string.IsNullOrWhiteSpace(eb.RecordedBy) ? eb.RecordedBy : (eb.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Trần Thị Mai"));
                 string ebStatus = (eb.OrderStatus != null && eb.OrderStatus.StartsWith("Đã hủy"))
@@ -846,13 +855,15 @@ namespace QuanLyDichVuKhachSan.Services
                     RoomNumber = eb.RoomNumber,
                     PaymentTime = eb.ThoiGianThanhToan ?? eb.EndTime,
                     Amount = amt,
-                    PaymentMethod = eb.DaThanhToan || eb.PaymentStatus == "Hoàn tất" 
-                        ? "Thanh toán trực tiếp (Quyết toán)" 
-                        : (eb.PaymentStatus == "Ghi nợ vào phòng" ? "Ghi nợ vào phòng" : "Đặt cọc trước"),
+                    PaymentMethod = (eb.OrderStatus != null && eb.OrderStatus.StartsWith("Đã hủy"))
+                        ? (eb.OrderStatus == "Đã hủy - Không hoàn cọc" ? "Thu giữ tiền cọc" : "Hoàn cọc cho khách")
+                        : (eb.DaThanhToan || eb.PaymentStatus == "Hoàn tất" 
+                            ? "Thanh toán trực tiếp (Quyết toán)" 
+                            : (eb.PaymentStatus == "Ghi nợ vào phòng" ? "Ghi nợ vào phòng" : "Đặt cọc trước")),
                     CreatedBy = creator,
-                    PaidBy = eb.DaThanhToan ? payer : "",
+                    PaidBy = (eb.DaThanhToan || eb.OrderStatus == "Đã hủy - Không hoàn cọc") ? payer : "",
                     Status = ebStatus,
-                    IsPaid = eb.DaThanhToan && (eb.OrderStatus == null || !eb.OrderStatus.StartsWith("Đã hủy")),
+                    IsPaid = eb.OrderStatus == "Đã hủy - Không hoàn cọc" || (eb.DaThanhToan && (eb.OrderStatus == null || !eb.OrderStatus.StartsWith("Đã hủy"))),
                     OriginalObject = eb
                 });
             }
@@ -860,6 +871,16 @@ namespace QuanLyDichVuKhachSan.Services
             // 4. Thuê xe máy
             foreach (var vr in VehicleRentals)
             {
+                decimal amt;
+                if (vr.OrderStatus != null && vr.OrderStatus.StartsWith("Đã hủy"))
+                {
+                    amt = vr.OrderStatus == "Đã hủy - Không hoàn cọc" ? vr.DepositAmount : 0;
+                }
+                else
+                {
+                    amt = vr.TotalPayment > 0 ? vr.TotalPayment : vr.RentalFee;
+                }
+
                 string creator = !string.IsNullOrWhiteSpace(vr.RecordedBy) ? vr.RecordedBy : (vr.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Nguyễn Văn An");
                 string payer = !string.IsNullOrWhiteSpace(vr.PaidByStaffName) ? vr.PaidByStaffName : (!string.IsNullOrWhiteSpace(vr.RecordedBy) ? vr.RecordedBy : (vr.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Nguyễn Văn An"));
                 string vrStatus = (vr.OrderStatus != null && vr.OrderStatus.StartsWith("Đã hủy"))
@@ -873,14 +894,16 @@ namespace QuanLyDichVuKhachSan.Services
                     PhoneNumber = vr.PhoneNumber,
                     RoomNumber = vr.RoomNumber,
                     PaymentTime = vr.ThoiGianThanhToan ?? vr.ActualReturnDate ?? vr.RentalDate,
-                    Amount = vr.TotalPayment > 0 ? vr.TotalPayment : vr.RentalFee,
-                    PaymentMethod = (vr.PaymentStatus == "Ghi nợ vào phòng" || vr.Status == "Ghi nợ vào phòng")
-                        ? "Ghi nợ vào phòng"
-                        : (string.IsNullOrWhiteSpace(vr.RoomNumber) ? "Thanh toán trực tiếp" : (vr.DaThanhToan ? "Thanh toán trực tiếp" : "Ghi nợ vào phòng")),
+                    Amount = amt,
+                    PaymentMethod = (vr.OrderStatus != null && vr.OrderStatus.StartsWith("Đã hủy"))
+                        ? (vr.OrderStatus == "Đã hủy - Không hoàn cọc" ? "Thu giữ tiền cọc" : "Hoàn cọc cho khách")
+                        : ((vr.PaymentStatus == "Ghi nợ vào phòng" || vr.Status == "Ghi nợ vào phòng")
+                            ? "Ghi nợ vào phòng"
+                            : (string.IsNullOrWhiteSpace(vr.RoomNumber) ? "Thanh toán trực tiếp" : (vr.DaThanhToan ? "Thanh toán trực tiếp" : "Ghi nợ vào phòng"))),
                     CreatedBy = creator,
-                    PaidBy = vr.DaThanhToan ? payer : "",
+                    PaidBy = (vr.DaThanhToan || vr.OrderStatus == "Đã hủy - Không hoàn cọc") ? payer : "",
                     Status = vrStatus,
-                    IsPaid = vr.DaThanhToan && (vr.OrderStatus == null || !vr.OrderStatus.StartsWith("Đã hủy")),
+                    IsPaid = vr.OrderStatus == "Đã hủy - Không hoàn cọc" || (vr.DaThanhToan && (vr.OrderStatus == null || !vr.OrderStatus.StartsWith("Đã hủy"))),
                     OriginalObject = vr
                 });
             }

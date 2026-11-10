@@ -1,4 +1,6 @@
 using System;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace QuanLyDichVuKhachSan.Models
 {
@@ -27,17 +29,37 @@ namespace QuanLyDichVuKhachSan.Models
         public string Note { get; set; } = string.Empty;
     }
 
-    public class Staff
+    public class Staff : INotifyPropertyChanged
     {
-        public int Id { get; set; }
-        public string Code { get; set; } = string.Empty;
-        public string FullName { get; set; } = string.Empty;
-        public string IdentityCard { get; set; } = string.Empty;
-        public string PhoneNumber { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string Position { get; set; } = string.Empty;
-        public decimal BaseSalary { get; set; }
-        public string Status { get; set; } = "Đang làm việc";
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+        private int _id;
+        public int Id { get => _id; set { _id = value; OnPropertyChanged(); } }
+
+        private string _code = string.Empty;
+        public string Code { get => _code; set { _code = value; OnPropertyChanged(); } }
+
+        private string _fullName = string.Empty;
+        public string FullName { get => _fullName; set { _fullName = value; OnPropertyChanged(); } }
+
+        private string _identityCard = string.Empty;
+        public string IdentityCard { get => _identityCard; set { _identityCard = value; OnPropertyChanged(); } }
+
+        private string _phoneNumber = string.Empty;
+        public string PhoneNumber { get => _phoneNumber; set { _phoneNumber = value; OnPropertyChanged(); } }
+
+        private string _email = string.Empty;
+        public string Email { get => _email; set { _email = value; OnPropertyChanged(); } }
+
+        private string _position = string.Empty;
+        public string Position { get => _position; set { _position = value; OnPropertyChanged(); } }
+
+        private decimal _baseSalary;
+        public decimal BaseSalary { get => _baseSalary; set { _baseSalary = value; OnPropertyChanged(); } }
+
+        private string _status = "Đang làm việc";
+        public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
     }
 
     public class Shift

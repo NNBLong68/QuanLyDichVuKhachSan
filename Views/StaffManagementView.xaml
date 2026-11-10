@@ -67,6 +67,11 @@
                                   CanUserDeleteRows="False"
                                   SelectionMode="Single"
                                   Height="180">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                                    <EventSetter Event="ContextMenuOpening" Handler="StaffRow_ContextMenuOpening"/>
+                                </Style>
+                            </DataGrid.RowStyle>
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Mã NV" Binding="{Binding Code}" Width="75" FontWeight="SemiBold"/>
                                 <DataGridTextColumn Header="Họ và Tên" Binding="{Binding FullName}" Width="150" FontWeight="Bold"/>
@@ -92,8 +97,9 @@
                     </Grid>
                 </Border>
 
-                <!-- Form Thêm nhân viên mới -->
-                <Border Grid.Column="2" Style="{StaticResource CardPanel}">
+                <!-- Form Thêm nhân viên mới (Ẩn khi đang sửa thông tin nhân viên) -->
+                <Border Grid.Column="2" Style="{StaticResource CardPanel}"
+                        Visibility="{Binding IsEditingStaff, Converter={StaticResource InvBoolToVis}}">
                     <StackPanel>
                         <TextBlock Text="➕ THÊM NHÂN VIÊN MỚI" FontSize="13.5" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,8"/>
 
@@ -155,6 +161,93 @@
                         </Grid>
 
                         <Button Content="Thêm Nhân Viên Vào Danh Sách" Style="{StaticResource PrimaryButton}" Height="32" FontSize="11.5" FontWeight="Bold" Command="{Binding AddStaffCommand}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Form Sửa thông tin nhân viên (Hiện khi đang sửa thông tin nhân viên) -->
+                <Border Grid.Column="2" Style="{StaticResource CardPanel}"
+                        BorderBrush="#2563EB" BorderThickness="1.5"
+                        Visibility="{Binding IsEditingStaff, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="✏️ SỬA THÔNG TIN NHÂN VIÊN" FontSize="13.5" FontWeight="Bold" Foreground="#1E40AF" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Content="✕" Style="{StaticResource RedButton}" Width="24" Height="24" Padding="0" FontSize="11" FontWeight="Bold" 
+                                    ToolTip="Tắt form sửa (không sửa gì)" Command="{Binding CloseEditStaffCommand}"/>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="2*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Mã NV:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,2"/>
+                                <TextBox Text="{Binding EditStaffCode}" IsReadOnly="True" Background="#F1F5F9" Foreground="#475569" FontWeight="Bold" Style="{StaticResource ModernTextBox}" Height="30"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Họ Và Tên:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,2"/>
+                                <TextBox Text="{Binding EditStaffName, UpdateSourceTrigger=PropertyChanged}" 
+                                         helpers:InputHelper.ValidationMode="NameOnly"
+                                         Style="{StaticResource ModernTextBox}" 
+                                         Height="30"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Số CCCD:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,2"/>
+                                <TextBox Text="{Binding EditStaffCccd, UpdateSourceTrigger=PropertyChanged}" 
+                                         helpers:InputHelper.ValidationMode="PhoneOnly"
+                                         Style="{StaticResource ModernTextBox}" 
+                                         Height="30"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Số Điện Thoại:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,2"/>
+                                <TextBox Text="{Binding EditStaffPhone, UpdateSourceTrigger=PropertyChanged}" 
+                                         helpers:InputHelper.ValidationMode="PhoneOnly"
+                                         Style="{StaticResource ModernTextBox}" 
+                                         Height="30"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Chức Vụ:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,2"/>
+                                <TextBox Text="{Binding EditStaffPosition, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="30"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Lương Cơ Bản:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,2"/>
+                                <TextBox Text="{Binding EditStaffSalary, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="30"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="1.4*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Content="Hủy (Khôi phục)" Style="{StaticResource OutlineButton}" Height="32" FontSize="11.5" FontWeight="SemiBold"
+                                    ToolTip="Quay về thông tin ban đầu trước khi sửa"
+                                    Command="{Binding CancelEditStaffCommand}"/>
+                            <Button Grid.Column="2" Content="Sửa (Xác nhận sửa)" Style="{StaticResource PrimaryButton}" Height="32" FontSize="11.5" FontWeight="Bold"
+                                    Command="{Binding ConfirmEditStaffCommand}"/>
+                        </Grid>
                     </StackPanel>
                 </Border>
             </Grid>
