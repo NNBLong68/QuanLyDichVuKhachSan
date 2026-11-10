@@ -299,3 +299,34 @@ BEGIN
     WHERE i.TrangThai = N'Đã hủy' AND d.DaThanhToan = 1;
 END;
 GO
+
+-- 4.11 Trigger tự động khóa tài khoản đăng nhập khi nhân viên nghỉ việc
+IF OBJECT_ID('trg_NhanVien_KhoaTaiKhoanKhiNghiViec', 'TR') IS NOT NULL 
+    DROP TRIGGER trg_NhanVien_KhoaTaiKhoanKhiNghiViec;
+GO
+CREATE TRIGGER trg_NhanVien_KhoaTaiKhoanKhiNghiViec
+ON NhanVien
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF TRIGGER_NESTLEVEL() > 1 RETURN;
+
+    IF UPDATE(TrangThai)
+    BEGIN
+        -- Khóa tài khoản trong TaiKhoanNhanVien
+        UPDATE tknv
+        SET TrangThai = 0
+        FROM TaiKhoanNhanVien tknv
+        INNER JOIN inserted i ON tknv.NhanVienId = i.Id
+        WHERE i.TrangThai IN (N'Đã nghỉ', N'Đã nghỉ việc');
+
+        -- Khóa tài khoản trong TaiKhoan
+        UPDATE tk
+        SET TrangThai = 0
+        FROM TaiKhoan tk
+        INNER JOIN inserted i ON tk.NhanVienId = i.Id OR tk.HoTen = i.HoTen
+        WHERE i.TrangThai IN (N'Đã nghỉ', N'Đã nghỉ việc');
+    END
+END;
+GO

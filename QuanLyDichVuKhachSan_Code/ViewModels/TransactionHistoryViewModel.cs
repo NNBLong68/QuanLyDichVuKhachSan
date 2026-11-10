@@ -45,7 +45,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public List<string> CategoryFilters { get; } = new()
         {
             "Tất cả",
-            "Tiền phòng & Dịch vụ",
+            "Tiền phòng",
             "Ăn uống",
             "Sảnh & Sự kiện",
             "Thuê xe máy",
@@ -91,6 +91,14 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public int TotalCount => FilteredTransactions.Count;
         public decimal TotalAmountSum => FilteredTransactions.Where(x => x.IsPaid).Sum(x => x.Amount);
         public string CurrentDutyStaffDisplay => Data.GetScheduledDutyStaffName();
+        public string CurrentOperatorDisplay => Data.GetCurrentActorName();
+        public string CurrentOperatorSubDisplay => AuthService.Instance.IsAdmin
+            ? $"Ca trực lễ tân: {Data.GetScheduledDutyStaffName()}"
+            : "Tài khoản: Lễ Tân (ghi nhận theo ca)";
+
+        private int _refreshPending;
+        private DateTime _lastKnownToday = DateTime.Today;
+        private System.Windows.Threading.DispatcherTimer? _shiftTimer;
 
         public ICommand RefreshCommand { get; }
         public ICommand OpenDetailCommand { get; }
@@ -106,7 +114,91 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 ToDate = DateTime.Today;
             });
 
+            SubscribeRealtimeUpdates();
+            StartShiftTimer();
             Refresh();
+        }
+
+        private void SubscribeRealtimeUpdates()
+        {
+            Data.TransactionsChanged += ScheduleRefresh;
+            AuthService.Instance.AuthStateChanged += OnAuthStateChanged;
+
+            System.Collections.Specialized.NotifyCollectionChangedEventHandler onCollectionChanged = (_, __) => ScheduleRefresh();
+            Data.FoodOrders.CollectionChanged += onCollectionChanged;
+            Data.EventBookings.CollectionChanged += onCollectionChanged;
+            Data.VehicleRentals.CollectionChanged += onCollectionChanged;
+            Data.ParkingRecords.CollectionChanged += onCollectionChanged;
+            Data.LaundryOrders.CollectionChanged += onCollectionChanged;
+            Data.RoomInvoices.CollectionChanged += onCollectionChanged;
+        }
+
+        private void StartShiftTimer()
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null) return;
+
+            _shiftTimer = new System.Windows.Threading.DispatcherTimer(
+                TimeSpan.FromSeconds(30),
+                System.Windows.Threading.DispatcherPriority.Background,
+                (_, __) =>
+                {
+                    if (DateTime.Today != _lastKnownToday)
+                    {
+                        var previousToday = _lastKnownToday;
+                        _lastKnownToday = DateTime.Today;
+                        if (ToDate.Date == previousToday)
+                        {
+                            ToDate = _lastKnownToday;
+                        }
+                    }
+
+                    NotifyActorProperties();
+                },
+                dispatcher);
+            _shiftTimer.Start();
+        }
+
+        private void OnAuthStateChanged()
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(new Action(NotifyActorProperties));
+                return;
+            }
+
+            NotifyActorProperties();
+        }
+
+        private void NotifyActorProperties()
+        {
+            OnPropertyChanged(nameof(CurrentDutyStaffDisplay));
+            OnPropertyChanged(nameof(CurrentOperatorDisplay));
+            OnPropertyChanged(nameof(CurrentOperatorSubDisplay));
+        }
+
+        private void ScheduleRefresh()
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null)
+            {
+                Refresh();
+                NotifyActorProperties();
+                return;
+            }
+
+            if (System.Threading.Interlocked.CompareExchange(ref _refreshPending, 1, 0) != 0)
+            {
+                return;
+            }
+
+            dispatcher.BeginInvoke(new Action(() =>
+            {
+                System.Threading.Interlocked.Exchange(ref _refreshPending, 0);
+                Refresh();
+                NotifyActorProperties();
+            }), System.Windows.Threading.DispatcherPriority.Background);
         }
 
         public void Refresh()

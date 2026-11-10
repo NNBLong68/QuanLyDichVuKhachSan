@@ -817,7 +817,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
 
             bool daTT = PaymentMethod == "Thanh toán trực tiếp";
-            string staff = Auth.IsAdmin ? "Chủ khách sạn (Admin)" : Data.GetCurrentDutyStaffName(DateTime.Now);
+            string staff = Data.GetCurrentActorName();
             int staffId = Data.GetCurrentDutyStaffId();
 
             int partnerId = SelectedPartner?.Id ?? 0;

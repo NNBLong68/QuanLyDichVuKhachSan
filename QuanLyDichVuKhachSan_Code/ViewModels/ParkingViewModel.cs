@@ -238,6 +238,11 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     ApplyParkingFilter();
                 }
             };
+            Auth.AuthStateChanged += () =>
+            {
+                OnPropertyChanged(nameof(IsAdmin));
+                OnPropertyChanged(nameof(IsReceptionist));
+            };
         }
 
         private void AutoSetFee()
@@ -329,9 +334,10 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 IsPaid = isFreeResident || isPayImmediateByTurn,
                 DaThanhToan = isFreeResident || isPayImmediateByTurn,
                 NguoiThanhToanId = (isFreeResident || isPayImmediateByTurn) ? Data.GetCurrentDutyStaffId() : null,
+                PaidByStaffName = (isFreeResident || isPayImmediateByTurn) ? Data.GetCurrentActorName() : "",
                 ThoiGianThanhToan = (isFreeResident || isPayImmediateByTurn) ? DateTime.Now : null,
                 RepairNote = RepairNote?.Trim() ?? "",
-                RecordedBy = Auth.IsAdmin ? "Chủ khách sạn (Admin)" : Data.GetCurrentDutyStaffName(DateTime.Now)
+                RecordedBy = Data.GetCurrentActorName()
             };
 
             if (isFreeResident)
@@ -402,39 +408,34 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
 
             decimal oldFee = record.ParkingFee;
+            DateTime? oldOutTime = record.CheckOutTime;
+            bool oldDaThanhToan = record.DaThanhToan;
+            bool oldIsPaid = record.IsPaid;
+            string oldPaidBy = record.PaidByStaffName;
+            DateTime? oldPayTime = record.ThoiGianThanhToan;
+
             record.ParkingFee = fee;
             record.CheckOutTime = outTime;
+            record.DaThanhToan = true;
+            record.IsPaid = true;
+            record.PaidByStaffName = Data.GetCurrentActorName();
+            record.ThoiGianThanhToan = DateTime.Now;
 
             var win = new Views.InvoiceBillWindow(record);
             bool? res = win.ShowDialog();
             if (res == true && win.IsConfirmed)
             {
-                int dutyStaffId = Data.GetCurrentDutyStaffId();
-                record.CheckOutTime = outTime;
-                record.ParkingFee = fee;
-                record.DaThanhToan = true;
-                record.IsPaid = true;
-                record.NguoiThanhToanId = dutyStaffId;
-                record.PaidByStaffName = Data.GetCurrentDutyStaffName();
-                record.ThoiGianThanhToan = DateTime.Now;
-
-                // Đồng bộ xuống CSDL SQL Server (Table BaiDoXe)
-                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                    "UPDATE BaiDoXe SET ThoiGianRa = @Out, PhiGui = @Phi, DaThanhToan = 1, NguoiThanhToanId = @NguoiTT, ThoiGianThanhToan = @TgTT WHERE Id = @Id OR MaVe = @Ma",
-                    new Microsoft.Data.SqlClient.SqlParameter("@Out", record.CheckOutTime),
-                    new Microsoft.Data.SqlClient.SqlParameter("@Phi", record.ParkingFee),
-                    new Microsoft.Data.SqlClient.SqlParameter("@NguoiTT", record.NguoiThanhToanId),
-                    new Microsoft.Data.SqlClient.SqlParameter("@TgTT", record.ThoiGianThanhToan),
-                    new Microsoft.Data.SqlClient.SqlParameter("@Id", record.Id),
-                    new Microsoft.Data.SqlClient.SqlParameter("@Ma", record.TicketCode)
-                );
-
+                Data.CompleteParkingCheckout(record, fee, outTime);
                 SelectedRecord = null;
             }
             else
             {
                 record.ParkingFee = oldFee;
-                record.CheckOutTime = null;
+                record.CheckOutTime = oldOutTime;
+                record.DaThanhToan = oldDaThanhToan;
+                record.IsPaid = oldIsPaid;
+                record.PaidByStaffName = oldPaidBy;
+                record.ThoiGianThanhToan = oldPayTime;
             }
         }
     }

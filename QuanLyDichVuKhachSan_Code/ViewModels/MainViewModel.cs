@@ -71,6 +71,25 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public string RoleBadgeBackground => Auth.IsAdmin ? "#D97706" : "#0D9488";
         public string AdminBadgeTooltip => "Nhấp chuột phải để Đăng xuất";
         public string CurrentDutyStaffDisplay => Data.GetScheduledDutyStaffName();
+        public string CurrentBillActorBannerText => Auth.IsAdmin
+            ? "📝 Ghi nhận bill: Chủ khách sạn (Admin)"
+            : "📝 Ghi nhận bill: Theo ca trực lễ tân";
+
+        private System.Windows.Threading.DispatcherTimer? _dutyShiftTimer;
+
+        private void StartDutyShiftTimer()
+        {
+            if (_dutyShiftTimer != null) return;
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null) return;
+
+            _dutyShiftTimer = new System.Windows.Threading.DispatcherTimer(
+                TimeSpan.FromSeconds(30),
+                System.Windows.Threading.DispatcherPriority.Background,
+                (_, __) => OnPropertyChanged(nameof(CurrentDutyStaffDisplay)),
+                dispatcher);
+            _dutyShiftTimer.Start();
+        }
 
         // ------------------------------------------------------------------
         // Trạng thái workspace: chỉ hiện giao diện làm việc sau khi dữ liệu sẵn sàng.
@@ -192,6 +211,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             RefreshServiceVisibilities();
             NotificationService.StartMonitoring();
+            StartDutyShiftTimer();
 
             IsDataReady = true;
 
@@ -384,6 +404,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             OnPropertyChanged(nameof(RoleBadgeBackground));
             OnPropertyChanged(nameof(AdminBadgeTooltip));
             OnPropertyChanged(nameof(CurrentDutyStaffDisplay));
+            OnPropertyChanged(nameof(CurrentBillActorBannerText));
             OnPropertyChanged(nameof(IsWorkspaceVisible));
             OnPropertyChanged(nameof(IsWorkspaceLoading));
 

@@ -46,7 +46,8 @@ IF OBJECT_ID('sp_XacNhanThanhToanDichVuTheoPhong', 'P') IS NOT NULL
 GO
 CREATE PROCEDURE sp_XacNhanThanhToanDichVuTheoPhong
     @SoPhong NVARCHAR(20),
-    @NhanVienThanhToanId INT
+    @NhanVienThanhToanId INT,
+    @NguoiThu NVARCHAR(100) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -60,31 +61,34 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
         DECLARE @Now DATETIME = GETDATE();
+        DECLARE @ResolvedNguoiThu NVARCHAR(100) = NULLIF(LTRIM(RTRIM(@NguoiThu)), N'');
+        IF @ResolvedNguoiThu IS NULL
+            SELECT @ResolvedNguoiThu = HoTen FROM NhanVien WHERE Id = @NhanVienThanhToanId;
 
-        UPDATE DonHangMonAn SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
+        UPDATE DonHangMonAn SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, NguoiThu = @ResolvedNguoiThu, ThoiGianThanhToan = @Now
         WHERE SoPhong = @SoPhong AND DaThanhToan = 0 AND TrangThai <> N'Đã hủy'
           AND (HinhThucThanhToan = N'Ghi nợ vào phòng' OR HinhThucThanhToan = N'Tính chung tiền phòng');
 
-        UPDATE DonDatSuKien SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
+        UPDATE DonDatSuKien SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, NguoiThu = @ResolvedNguoiThu, ThoiGianThanhToan = @Now
         WHERE SoPhong = @SoPhong AND DaThanhToan = 0
           AND TrangThaiDon NOT IN (N'Đã hủy - Hoàn cọc', N'Đã hủy - Không hoàn cọc')
           AND ThoiGianBatDau <= @Now;
 
-        UPDATE DonThueXe SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
+        UPDATE DonThueXe SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, NguoiThu = @ResolvedNguoiThu, ThoiGianThanhToan = @Now
         WHERE SoPhong = @SoPhong AND DaThanhToan = 0
           AND TrangThaiDon NOT IN (N'Đã hủy - Hoàn cọc', N'Đã hủy - Không hoàn cọc')
           AND NgayThue <= @Now;
 
-        UPDATE BaiDoXe SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
+        UPDATE BaiDoXe SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, NguoiThu = @ResolvedNguoiThu, ThoiGianThanhToan = @Now
         WHERE SoPhong = @SoPhong AND DaThanhToan = 0;
 
-        UPDATE DonGiatUi SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
+        UPDATE DonGiatUi SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, NguoiThu = @ResolvedNguoiThu, ThoiGianThanhToan = @Now
         WHERE SoPhong = @SoPhong AND DaThanhToan = 0 AND TrangThai != N'Đã hủy';
 
         COMMIT TRANSACTION;
 
         SELECT N'Đã xác nhận thanh toán toàn bộ dịch vụ của phòng ' + @SoPhong
-               + N' bởi nhân viên #' + CAST(@NhanVienThanhToanId AS NVARCHAR(10)) AS KetQua;
+               + N' bởi ' + ISNULL(@ResolvedNguoiThu, CAST(@NhanVienThanhToanId AS NVARCHAR(10))) AS KetQua;
     END TRY
     BEGIN CATCH
         IF XACT_STATE() <> 0 ROLLBACK TRANSACTION;
@@ -100,7 +104,8 @@ GO
 CREATE PROCEDURE sp_XacNhanThanhToanDonLe
     @LoaiDichVu NVARCHAR(20),
     @MaDon NVARCHAR(30),
-    @NhanVienThanhToanId INT
+    @NhanVienThanhToanId INT,
+    @NguoiThu NVARCHAR(100) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -112,21 +117,24 @@ BEGIN
     END
 
     DECLARE @Now DATETIME = GETDATE();
+    DECLARE @ResolvedNguoiThu NVARCHAR(100) = NULLIF(LTRIM(RTRIM(@NguoiThu)), N'');
+    IF @ResolvedNguoiThu IS NULL
+        SELECT @ResolvedNguoiThu = HoTen FROM NhanVien WHERE Id = @NhanVienThanhToanId;
 
     IF @LoaiDichVu = 'AnUong'
-        UPDATE DonHangMonAn SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
+        UPDATE DonHangMonAn SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, NguoiThu = @ResolvedNguoiThu, ThoiGianThanhToan = @Now
         WHERE MaDon = @MaDon AND DaThanhToan = 0 AND TrangThai <> N'Đã hủy';
     ELSE IF @LoaiDichVu = 'SuKien'
-        UPDATE DonDatSuKien SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
+        UPDATE DonDatSuKien SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, NguoiThu = @ResolvedNguoiThu, ThoiGianThanhToan = @Now
         WHERE MaDon = @MaDon AND DaThanhToan = 0 AND TrangThaiDon NOT LIKE N'Đã hủy%';
     ELSE IF @LoaiDichVu = 'ThueXe'
-        UPDATE DonThueXe SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
+        UPDATE DonThueXe SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, NguoiThu = @ResolvedNguoiThu, ThoiGianThanhToan = @Now
         WHERE MaDon = @MaDon AND DaThanhToan = 0 AND TrangThaiDon NOT LIKE N'Đã hủy%';
     ELSE IF @LoaiDichVu = 'DoXe'
-        UPDATE BaiDoXe SET DaThanhToan = 1, ThoiGianRa = ISNULL(ThoiGianRa, @Now), NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
+        UPDATE BaiDoXe SET DaThanhToan = 1, ThoiGianRa = ISNULL(ThoiGianRa, @Now), NguoiThanhToanId = @NhanVienThanhToanId, NguoiThu = @ResolvedNguoiThu, ThoiGianThanhToan = @Now
         WHERE MaVe = @MaDon AND DaThanhToan = 0;
     ELSE IF @LoaiDichVu = 'GiatUi'
-        UPDATE DonGiatUi SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, ThoiGianThanhToan = @Now
+        UPDATE DonGiatUi SET DaThanhToan = 1, NguoiThanhToanId = @NhanVienThanhToanId, NguoiThu = @ResolvedNguoiThu, ThoiGianThanhToan = @Now
         WHERE MaDon = @MaDon AND DaThanhToan = 0 AND TrangThai != N'Đã hủy';
     ELSE
         RAISERROR(N'Loại dịch vụ không hợp lệ.', 16, 1);
@@ -901,5 +909,56 @@ BEGIN
     -- 7. Kích hoạt các đơn sự kiện / thuê xe đang trong khung giờ hôm nay
     EXEC sp_KichHoatDangSuDungSuKien;
     EXEC sp_KichHoatDangThueXe;
+END;
+GO
+
+-- 5.23 Thủ tục cấp tài khoản nhân viên tự động và đồng bộ hệ thống đăng nhập
+IF OBJECT_ID('sp_TaoTaiKhoanNhanVien', 'P') IS NOT NULL DROP PROCEDURE sp_TaoTaiKhoanNhanVien;
+GO
+CREATE PROCEDURE sp_TaoTaiKhoanNhanVien
+    @NhanVienId     INT,
+    @TenDangNhap    NVARCHAR(50),
+    @MatKhauHash    NVARCHAR(255),
+    @TrangThai      BIT = 1
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- 1. Lưu / Cập nhật bảng TaiKhoanNhanVien
+    IF EXISTS (SELECT 1 FROM TaiKhoanNhanVien WHERE NhanVienId = @NhanVienId)
+    BEGIN
+        UPDATE TaiKhoanNhanVien
+        SET TenDangNhap = @TenDangNhap,
+            MatKhauHash = @MatKhauHash,
+            TrangThai = @TrangThai
+        WHERE NhanVienId = @NhanVienId;
+    END
+    ELSE
+    BEGIN
+        INSERT INTO TaiKhoanNhanVien (NhanVienId, TenDangNhap, MatKhauHash, TrangThai)
+        VALUES (@NhanVienId, @TenDangNhap, @MatKhauHash, @TrangThai);
+    END
+
+    -- 2. Đồng bộ sang bảng TaiKhoan để nhân viên đăng nhập ngay vào ứng dụng
+    DECLARE @HoTen NVARCHAR(100), @Phone NVARCHAR(20), @Email NVARCHAR(100);
+    SELECT @HoTen = HoTen, @Phone = SoDienThoai, @Email = Email FROM NhanVien WHERE Id = @NhanVienId;
+
+    IF EXISTS (SELECT 1 FROM TaiKhoan WHERE NhanVienId = @NhanVienId OR TenDangNhap = @TenDangNhap)
+    BEGIN
+        UPDATE TaiKhoan
+        SET TenDangNhap = @TenDangNhap,
+            MatKhauHash = @MatKhauHash,
+            HoTen = @HoTen,
+            SoDienThoai = @Phone,
+            Email = @Email,
+            TrangThai = @TrangThai,
+            NhanVienId = @NhanVienId
+        WHERE NhanVienId = @NhanVienId OR TenDangNhap = @TenDangNhap;
+    END
+    ELSE
+    BEGIN
+        INSERT INTO TaiKhoan (TenDangNhap, MatKhauHash, HoTen, VaiTro, SoDienThoai, Email, TrangThai, NhanVienId)
+        VALUES (@TenDangNhap, @MatKhauHash, @HoTen, N'LeTan', @Phone, @Email, @TrangThai, @NhanVienId);
+    END
 END;
 GO

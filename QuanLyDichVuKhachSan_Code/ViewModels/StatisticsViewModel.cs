@@ -65,7 +65,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public int TotalEventSpacesCount => Data.EventSpaces.Count;
         public int ActiveLaundryOrdersCount => Data.LaundryOrders.Count(l => l.Status == LaundryStatus.Washing);
         public int TotalLaundryPartnersCount => Data.LaundryPartners.Count;
-        public string ActiveDutyStaffName => Data.GetCurrentDutyStaffName();
+        public string ActiveDutyStaffName => Data.GetCurrentActorName();
 
         public string PeriodRangeDisplay
         {
@@ -83,6 +83,25 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public StatisticsViewModel()
         {
             RefreshCommand = new RelayCommand(RefreshStatistics);
+            AuthService.Instance.AuthStateChanged += OnAuthOrTransactionsChanged;
+            Data.TransactionsChanged += OnAuthOrTransactionsChanged;
+            RefreshStatistics();
+        }
+
+        private void OnAuthOrTransactionsChanged()
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(new Action(() =>
+                {
+                    OnPropertyChanged(nameof(ActiveDutyStaffName));
+                    RefreshStatistics();
+                }));
+                return;
+            }
+
+            OnPropertyChanged(nameof(ActiveDutyStaffName));
             RefreshStatistics();
         }
 

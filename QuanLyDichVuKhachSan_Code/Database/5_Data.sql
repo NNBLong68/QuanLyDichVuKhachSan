@@ -15,17 +15,28 @@ GO
 -- PHẦN 6: DỮ LIỆU TĨNH & DANH MỤC HỆ THỐNG (SYSTEM & MASTER DATA)
 -- =====================================================================================
 
--- 6.1 Tài khoản đăng nhập mặc định (Mật khẩu mặc định: 123)
-INSERT INTO TaiKhoan (TenDangNhap, MatKhauHash, HoTen, VaiTro, SoDienThoai, Email) VALUES
-('admin', 'ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=', N'Chủ Khách Sạn', N'Admin', '0948198812', 'dalathotel@gmail.com'),
-('letan', 'ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=', N'Lễ Tân Trực Chính', N'LeTan', '0912345678', 'letan@dalathotel.vn');
-GO
-
--- 6.2 Nhân viên
+-- 6.1 Nhân viên khách sạn
 INSERT INTO NhanVien (MaNV, HoTen, CCCD, SoDienThoai, Email, ChucVu, LuongCoBan, TrangThai) VALUES
 ('NV001', N'Trần Thị Mai',  '001198000123', '0912345678', 'maitran@dalathotel.vn',   N'Lễ tân trưởng', 12000000, N'Đang làm việc'),
 ('NV002', N'Nguyễn Văn An',  '001199000456', '0987654321', 'annguyen@dalathotel.vn',  N'Nhân viên lễ tân',8500000, N'Đang làm việc'),
 ('NV003', N'Lê Hoàng Nam',   '001197000789', '0933112233', 'namle@dalathotel.vn',     N'Nhân viên lễ tân',8500000, N'Đang làm việc');
+GO
+
+-- 6.2 Tài khoản đăng nhập hệ thống & Tài khoản cấp riêng cho từng nhân viên (Mật khẩu mặc định: 123)
+-- Hash AES-256 của '123' với muối bảo mật DalatHotel: ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=
+INSERT INTO TaiKhoan (TenDangNhap, MatKhauHash, HoTen, VaiTro, SoDienThoai, Email, NhanVienId) VALUES
+('admin', 'ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=', N'Chủ Khách Sạn', N'Admin', '0948198812', 'dalathotel@gmail.com', NULL),
+('letan', 'ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=', N'Lễ Tân Trực Chính', N'LeTan', '0912345678', 'letan@dalathotel.vn', NULL),
+('maitt', 'ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=', N'Trần Thị Mai', N'LeTan', '0912345678', 'maitran@dalathotel.vn', 1),
+('annv',  'ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=', N'Nguyễn Văn An', N'LeTan', '0987654321', 'annguyen@dalathotel.vn', 2),
+('namlh', 'ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=', N'Lê Hoàng Nam', N'LeTan', '0933112233', 'namle@dalathotel.vn', 3);
+GO
+
+-- 6.2.1 Bảng Tài khoản Nhân viên (Lưu trữ và đối chiếu trực tiếp theo từng nhân viên)
+INSERT INTO TaiKhoanNhanVien (NhanVienId, TenDangNhap, MatKhauHash, TrangThai) VALUES
+(1, 'maitt', 'ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=', 1),
+(2, 'annv',  'ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=', 1),
+(3, 'namlh', 'ubJSwSb+V3dx+o3DsP1XwWiiBuvs6i40PTcsb1ziOsU=', 1);
 GO
 
 -- 6.3 Ca trực

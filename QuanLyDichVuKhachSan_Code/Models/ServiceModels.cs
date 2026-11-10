@@ -1612,7 +1612,7 @@ namespace QuanLyDichVuKhachSan.Models
 
         public string ServiceBadgeBg => ServiceCategory switch
         {
-            "Tiền phòng & Dịch vụ" => "#DBEAFE",
+            "Tiền phòng" or "Tiền phòng & Dịch vụ" => "#DBEAFE",
             "Ăn uống" or "Ẩm thực & Ăn uống" => "#FEF3C7",
             "Sảnh & Sự kiện" => "#FCE7F3",
             "Thuê xe máy" => "#E0E7FF",
@@ -1623,7 +1623,7 @@ namespace QuanLyDichVuKhachSan.Models
 
         public string ServiceBadgeFg => ServiceCategory switch
         {
-            "Tiền phòng & Dịch vụ" => "#1D4ED8",
+            "Tiền phòng" or "Tiền phòng & Dịch vụ" => "#1D4ED8",
             "Ăn uống" or "Ẩm thực & Ăn uống" => "#B45309",
             "Sảnh & Sự kiện" => "#BE185D",
             "Thuê xe máy" => "#4338CA",

@@ -31,12 +31,12 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Cột trái: Đội xe & Hợp đồng thuê (Chia 2 phần trên dưới bằng nhau 50/50) -->
+            <!-- Cột trái: Đội xe & Hợp đồng thuê (Chia 2 phần trên dưới linh hoạt với GridSplitter) -->
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="16"/>
-                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="1*" MinHeight="140"/>
+                    <RowDefinition Height="12"/>
+                    <RowDefinition Height="1.2*" MinHeight="160"/>
                 </Grid.RowDefinitions>
 
                 <!-- Danh sách xe & Bộ lọc -->
@@ -171,6 +171,26 @@
                         </ScrollViewer>
                     </Grid>
                 </Border>
+
+                <!-- Thanh kéo giãn linh hoạt giữa Đội xe và Lịch sử thuê xe -->
+                <GridSplitter Grid.Row="1" Height="12" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                              ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                              Background="Transparent" Cursor="SizeNS">
+                    <GridSplitter.Template>
+                        <ControlTemplate TargetType="GridSplitter">
+                            <Border Background="Transparent" Height="12" VerticalAlignment="Center" Cursor="SizeNS">
+                                <Border x:Name="Handle" Height="4" CornerRadius="2" Background="#CBD5E1" HorizontalAlignment="Center" Width="64"
+                                        ToolTip="Kéo lên/xuống để thay đổi độ cao giữa 2 khung"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Handle" Property="Background" Value="#3B82F6"/>
+                                    <Setter TargetName="Handle" Property="Height" Value="5"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </GridSplitter.Template>
+                </GridSplitter>
 
                 <!-- Lịch sử hợp đồng thuê xe -->
                 <Border Grid.Row="2" Style="{StaticResource CardPanel}">
