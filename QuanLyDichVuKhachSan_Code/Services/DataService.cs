@@ -55,8 +55,11 @@ namespace QuanLyDichVuKhachSan.Services
         public event Action? ParkingRecordsChanged;
 
         // Dịch vụ Giặt ủi ngoài
+        public ObservableCollection<LaundryServiceTypeItem> LaundryServiceTypes { get; } = new();
         public ObservableCollection<LaundryPartner> LaundryPartners { get; } = new();
         public ObservableCollection<LaundryOrder> LaundryOrders { get; } = new();
+        public event Action? LaundryDataChanged;
+        public void NotifyLaundryDataChanged() => LaundryDataChanged?.Invoke();
 
         // Danh sách số phòng hỗ trợ chọn hoặc gõ tự do (Chỉ các phòng có khách đang ở)
         public ObservableCollection<string> AvailableRoomNumbers { get; } = new() { "" };
@@ -195,9 +198,10 @@ namespace QuanLyDichVuKhachSan.Services
             var taskSuppliers = Task.Run(() => DatabaseService.Instance.LoadSuppliersFromDb());
             var taskSpaces = Task.Run(() => DatabaseService.Instance.LoadEventSpacesFromDb());
             var taskVehicles = Task.Run(() => DatabaseService.Instance.LoadVehiclesFromDb());
+            var taskLaundryTypes = Task.Run(() => DatabaseService.Instance.LoadLaundryServiceTypesFromDb());
             var taskPartners = Task.Run(() => DatabaseService.Instance.LoadLaundryPartnersFromDb());
 
-            Task.WaitAll(taskUsers, taskRooms, taskStaff, taskShifts, taskServices, taskCustomers, taskFoods, taskSuppliers, taskSpaces, taskVehicles, taskPartners);
+            Task.WaitAll(taskUsers, taskRooms, taskStaff, taskShifts, taskServices, taskCustomers, taskFoods, taskSuppliers, taskSpaces, taskVehicles, taskLaundryTypes, taskPartners);
 
             var dbUsers = taskUsers.Result;
             var dbRooms = taskRooms.Result;
@@ -209,6 +213,7 @@ namespace QuanLyDichVuKhachSan.Services
             var dbSuppliers = taskSuppliers.Result;
             var dbSpaces = taskSpaces.Result;
             var dbVehicles = taskVehicles.Result;
+            var dbLaundryTypes = taskLaundryTypes.Result;
             var dbPartners = taskPartners.Result;
 
             // 3. GIAI ĐOẠN 2: Nạp song song các bảng phụ thuộc
@@ -364,7 +369,19 @@ namespace QuanLyDichVuKhachSan.Services
                 foreach (var pr in dbParking) ParkingRecords.Add(pr);
             }
 
-            // 11. Đối tác Giặt ủi & Đơn giặt
+            // 11. Loại hình dịch vụ, Đối tác Giặt ủi & Đơn giặt
+            LaundryServiceTypes.Clear();
+            if (dbLaundryTypes != null && dbLaundryTypes.Count > 0)
+            {
+                foreach (var lt in dbLaundryTypes) LaundryServiceTypes.Add(lt);
+            }
+            else
+            {
+                LaundryServiceTypes.Add(new LaundryServiceTypeItem { Id = 1, MaLoai = "GIAT_SAY", TenLoai = "Giặt sấy thông thường", DonGiaBanKg = 30000 });
+                LaundryServiceTypes.Add(new LaundryServiceTypeItem { Id = 2, MaLoai = "GIAT_HAP", TenLoai = "Giặt hấp cao cấp", DonGiaBanKg = 80000 });
+                LaundryServiceTypes.Add(new LaundryServiceTypeItem { Id = 3, MaLoai = "UI_PHANG", TenLoai = "Ủi phẳng", DonGiaBanKg = 40000 });
+            }
+
             LaundryPartners.Clear();
             _laundryPartnerCache.Clear();
             if (dbPartners != null && dbPartners.Count > 0)
@@ -1731,7 +1748,7 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 order.PartnerId = partner.Id;
                 order.PartnerName = partner.Name;
-                decimal cost = partner.GetCostPriceForService(order.ServiceType);
+                decimal cost = partner.GetCostPriceForOrder(order);
                 order.DonGiaVonKg = cost;
                 order.PartnerEarnings = Math.Round(order.WeightKg * cost, 0);
                 order.HotelEarnings = order.TotalPrice - order.PartnerEarnings;
@@ -1740,7 +1757,7 @@ namespace QuanLyDichVuKhachSan.Services
             else if (order.PartnerId > 0 && _laundryPartnerCache.TryGetValue(order.PartnerId, out var cachedPartner))
             {
                 order.PartnerName = cachedPartner.Name;
-                decimal cost = cachedPartner.GetCostPriceForService(order.ServiceType);
+                decimal cost = cachedPartner.GetCostPriceForOrder(order);
                 order.DonGiaVonKg = cost;
                 order.PartnerEarnings = Math.Round(order.WeightKg * cost, 0);
                 order.HotelEarnings = order.TotalPrice - order.PartnerEarnings;
@@ -1811,7 +1828,7 @@ namespace QuanLyDichVuKhachSan.Services
             order.Status = LaundryStatus.Washing;
             order.NgayGiaoDoiTac = DateTime.Now;
 
-            decimal cost = partner.GetCostPriceForService(order.ServiceType);
+            decimal cost = partner.GetCostPriceForOrder(order);
             order.DonGiaVonKg = cost;
             order.PartnerEarnings = Math.Round(order.WeightKg * cost, 0);
             order.HotelEarnings = order.TotalPrice - order.PartnerEarnings;
@@ -2167,9 +2184,10 @@ namespace QuanLyDichVuKhachSan.Services
                 var taskFoods = Task.Run(() => DatabaseService.Instance.LoadFoodItemsFromDb());
                 var taskSpaces = Task.Run(() => DatabaseService.Instance.LoadEventSpacesFromDb());
                 var taskVehicles = Task.Run(() => DatabaseService.Instance.LoadVehiclesFromDb());
+                var taskLaundryTypes = Task.Run(() => DatabaseService.Instance.LoadLaundryServiceTypesFromDb());
                 var taskPartners = Task.Run(() => DatabaseService.Instance.LoadLaundryPartnersFromDb());
 
-                Task.WaitAll(taskStaff, taskShifts, taskRooms, taskCustomers, taskServices, taskFoods, taskSpaces, taskVehicles, taskPartners);
+                Task.WaitAll(taskStaff, taskShifts, taskRooms, taskCustomers, taskServices, taskFoods, taskSpaces, taskVehicles, taskLaundryTypes, taskPartners);
 
                 var dbStaff = taskStaff.Result;
                 var dbShifts = taskShifts.Result;
@@ -2179,6 +2197,7 @@ namespace QuanLyDichVuKhachSan.Services
                 var dbFoods = taskFoods.Result;
                 var dbSpaces = taskSpaces.Result;
                 var dbVehicles = taskVehicles.Result;
+                var dbLaundryTypes = taskLaundryTypes.Result;
                 var dbPartners = taskPartners.Result;
 
                 // Giai đoạn 2: Nạp song song các bảng phụ thuộc
@@ -2289,12 +2308,18 @@ namespace QuanLyDichVuKhachSan.Services
                         ParkingRecords.Clear();
                         foreach (var pr in dbParking) ParkingRecords.Add(pr);
                     }
+                    if (dbLaundryTypes != null && dbLaundryTypes.Count > 0)
+                    {
+                        LaundryServiceTypes.Clear();
+                        foreach (var lt in dbLaundryTypes) LaundryServiceTypes.Add(lt);
+                    }
                     if (dbPartners != null && dbPartners.Count > 0)
                     {
                         LaundryPartners.Clear();
                         _laundryPartnerCache.Clear();
                         foreach (var lp in dbPartners) AddLaundryPartnerToCache(lp);
                     }
+                    NotifyLaundryDataChanged();
                     if (dbLaundry != null && dbLaundry.Count > 0)
                     {
                         LaundryOrders.Clear();

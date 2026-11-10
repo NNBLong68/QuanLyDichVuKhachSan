@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:models="clr-namespace:QuanLyDichVuKhachSan.Models"
+        xmlns:helpers="clr-namespace:QuanLyDichVuKhachSan.Helpers"
         mc:Ignorable="d"
         Title="Thêm Xe Cho Thuê Mới - Dalat Hotel" 
         Width="560" SizeToContent="Height" MinHeight="550"
@@ -70,11 +71,11 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="Giá Thuê / Ngày (VNĐ):" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                        <TextBox x:Name="TxtDailyRate" Style="{StaticResource ModernTextBox}" Height="36" FontWeight="Bold" Foreground="#D97706" TextChanged="TxtDailyRate_TextChanged"/>
+                        <TextBox x:Name="TxtDailyRate" helpers:InputHelper.ValidationMode="DecimalOnly" Style="{StaticResource ModernTextBox}" Height="36" FontWeight="Bold" Foreground="#D97706" TextChanged="TxtDailyRate_TextChanged"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="Tiền Cọc Quy Định (30%):" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                        <TextBox x:Name="TxtRequiredDeposit" Style="{StaticResource ModernTextBox}" Height="36" FontWeight="Bold" Foreground="#2563EB"/>
+                        <TextBlock Text="Tiền Cọc Quy Định (VNĐ):" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
+                        <TextBox x:Name="TxtRequiredDeposit" helpers:InputHelper.ValidationMode="DecimalOnly" Style="{StaticResource ModernTextBox}" Height="36" FontWeight="Bold" Foreground="#2563EB"/>
                     </StackPanel>
                 </Grid>
 
@@ -86,7 +87,7 @@
                 </ComboBox>
 
                 <TextBlock Text="Tình Trạng Chi Tiết / Ghi Chú:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                <TextBox x:Name="TxtConditionNote" Style="{StaticResource ModernTextBox}" Height="36" Margin="0,0,0,18" Text="Xe mới, máy êm, kèm 2 mũ bảo hiểm"/>
+                <TextBox x:Name="TxtConditionNote" Style="{StaticResource ModernTextBox}" Height="36" Margin="0,0,0,18"/>
 
                 <!-- Nút bấm Hủy (Reset form) và Xác nhận (Thêm mới) -->
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

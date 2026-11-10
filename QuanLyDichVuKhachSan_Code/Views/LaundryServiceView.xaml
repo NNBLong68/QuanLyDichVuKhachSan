@@ -306,10 +306,21 @@
 
                         <!-- 1. Loại Hình Dịch Vụ Giặt (Chốt giá bán thống nhất lúc nhận) -->
                         <TextBlock Text="1. Loại Hình Dịch Vụ Giặt (*):" FontSize="11" FontWeight="Bold" Foreground="#0284C7" Margin="0,0,0,3"/>
-                        <ComboBox SelectedValue="{Binding SelectedServiceType}" SelectedValuePath="Tag" Height="34" Margin="0,0,0,8" Style="{StaticResource ModernComboBox}">
-                            <ComboBoxItem Content="🧺 Giặt sấy khô thông thường (30.000 đ/Kg)" Tag="{x:Static models:LaundryServiceType.WashAndDry}" IsSelected="True"/>
-                            <ComboBoxItem Content="👔 Giặt hấp vest / đầm dạ hội (80.000 đ/Kg)" Tag="{x:Static models:LaundryServiceType.DryCleaning}"/>
-                            <ComboBoxItem Content="✨ Ủi phẳng cao cấp (40.000 đ/Kg)" Tag="{x:Static models:LaundryServiceType.Ironing}"/>
+                        <ComboBox x:Name="CboLaundryServiceType"
+                                  ItemsSource="{Binding Data.LaundryServiceTypes}"
+                                  SelectedItem="{Binding SelectedServiceTypeItem, Mode=TwoWay}"
+                                  DisplayMemberPath="DisplayText"
+                                  Height="34" Margin="0,0,0,8"
+                                  Style="{StaticResource ModernComboBox}"
+                                  ContextMenuOpening="ServiceTypeCombo_ContextMenuOpening"
+                                  ToolTip="Chọn loại hình dịch vụ giặt (Admin click chuột phải để thêm loại hình dịch vụ mới)">
+                            <ComboBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="➕ Thêm loại hình dịch vụ giặt mới"
+                                              FontWeight="Bold" Foreground="#16A34A"
+                                              Click="MenuItem_AddServiceType_Click"/>
+                                </ContextMenu>
+                            </ComboBox.ContextMenu>
                         </ComboBox>
 
                         <Grid Margin="0,0,0,6">
@@ -393,15 +404,32 @@
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="Đơn Giá/Kg (Niêm yết):" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,2"/>
-                                <TextBox Text="{Binding UnitPricePerKg, StringFormat='{}{0:N0} đ'}" 
-                                         IsReadOnly="True" 
-                                         Focusable="False" 
-                                         Background="#F1F5F9" 
-                                         Foreground="#1E293B" 
-                                         FontWeight="Bold" 
-                                         Style="{StaticResource ModernTextBox}" 
+                                <TextBox x:Name="TxtUnitPrice"
+                                         Text="{Binding UnitPriceDisplayText, UpdateSourceTrigger=PropertyChanged}"
+                                         IsReadOnly="{Binding IsUnitPriceReadOnly}"
+                                         Focusable="{Binding IsAdmin}"
+                                         helpers:InputHelper.ValidationMode="DecimalOnly"
+                                         Foreground="#1E293B"
+                                         FontWeight="Bold"
                                          Height="34"
-                                         ToolTip="Đơn giá niêm yết theo loại dịch vụ đã chọn (chỉ hiển thị, không thể chỉnh sửa)"/>
+                                         GotFocus="TxtUnitPrice_GotFocus"
+                                         LostFocus="TxtUnitPrice_LostFocus"
+                                         PreviewKeyDown="TxtUnitPrice_PreviewKeyDown">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox" BasedOn="{StaticResource ModernTextBox}">
+                                            <Setter Property="Background" Value="#E2E8F0"/>
+                                            <Setter Property="BorderBrush" Value="#0284C7"/>
+                                            <Setter Property="ToolTip" Value="Admin: Nhập đơn giá/Kg mới cho loại dịch vụ đang chọn và nhấn Enter (hoặc click ra ngoài) để lưu niêm yết"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsUnitPriceReadOnly}" Value="True">
+                                                    <Setter Property="Background" Value="#F1F5F9"/>
+                                                    <Setter Property="BorderBrush" Value="#94A3B8"/>
+                                                    <Setter Property="ToolTip" Value="Đơn giá niêm yết theo loại dịch vụ đã chọn (chỉ tài khoản Admin mới được phép chỉnh sửa)"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
                             </StackPanel>
                         </Grid>
 
@@ -448,9 +476,12 @@
                                     <TextBlock Text="2. Gán Đối Tác Nhận Giặt:" FontSize="11" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
                                     <CheckBox Content="Bàn giao sau" IsChecked="{Binding IsDeferredPartner}" HorizontalAlignment="Right" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B"/>
                                 </Grid>
-                                <ComboBox ItemsSource="{Binding Data.LaundryPartners}" SelectedItem="{Binding SelectedPartner}" DisplayMemberPath="Name" 
+                                <ComboBox ItemsSource="{Binding AvailablePartnersForService}" SelectedItem="{Binding SelectedPartner}" DisplayMemberPath="Name" 
                                           IsEnabled="{Binding CanSelectPartner}" Height="32" Style="{StaticResource ModernComboBox}"/>
-                                <TextBlock Text="💡 Có thể để trống lúc nhận đồ, sau đó giao tiệm rảnh qua nút 'Giao tiệm' trong danh sách." 
+                                <TextBlock Text="⚠️ Hiện chưa có đối tác nào cung cấp dịch vụ này — Hãy tick 'Bàn giao sau' hoặc cập nhật bảng giá đối tác."
+                                           Visibility="{Binding NoPartnerForServiceWarningVisible, Converter={StaticResource BoolToVis}}"
+                                           FontSize="10" Foreground="#DC2626" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                <TextBlock Text="💡 Chỉ hiển thị đối tác có nhận loại dịch vụ đang chọn. Có thể để trống lúc nhận đồ và giao tiệm sau qua chuột phải." 
                                            FontSize="10" Foreground="#64748B" TextWrapping="Wrap" Margin="0,3,0,0"/>
                             </StackPanel>
                         </Border>

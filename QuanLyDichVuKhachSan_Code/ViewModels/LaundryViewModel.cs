@@ -1,5 +1,8 @@
 using System;
+using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using QuanLyDichVuKhachSan.Helpers;
@@ -15,6 +18,11 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
         public bool IsAdmin => Auth.IsAdmin;
         public bool IsReceptionist => Auth.IsReceptionist;
+        public bool IsUnitPriceReadOnly => !IsAdmin;
+
+        // Danh sách đối tác phù hợp với loại hình dịch vụ đang chọn
+        public ObservableCollection<LaundryPartner> AvailablePartnersForService { get; } = new();
+        public bool NoPartnerForServiceWarningVisible => SelectedServiceTypeItem != null && AvailablePartnersForService.Count == 0;
 
         // Đơn giặt mới (Lễ tân)
         private bool _isDeferredPartner = true;
@@ -26,7 +34,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 if (SetProperty(ref _isDeferredPartner, value))
                 {
                     if (value) SelectedPartner = null;
-                    else if (SelectedPartner == null) SelectedPartner = Data.LaundryPartners.FirstOrDefault(p => p.IsActive);
+                    else if (SelectedPartner == null) SelectedPartner = AvailablePartnersForService.FirstOrDefault();
                     OnPropertyChanged(nameof(CanSelectPartner));
                 }
             }
@@ -51,16 +59,27 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
         }
 
-        private LaundryServiceType _selectedServiceType = LaundryServiceType.WashAndDry;
-        public LaundryServiceType SelectedServiceType
+        private LaundryServiceTypeItem? _selectedServiceTypeItem;
+        public LaundryServiceTypeItem? SelectedServiceTypeItem
         {
-            get => _selectedServiceType;
+            get => _selectedServiceTypeItem;
             set
             {
-                if (SetProperty(ref _selectedServiceType, value))
+                if (SetProperty(ref _selectedServiceTypeItem, value))
                 {
                     AutoSetPricePerKg();
+                    RefreshAvailablePartnersForService();
                 }
+            }
+        }
+
+        public LaundryServiceType SelectedServiceType
+        {
+            get => SelectedServiceTypeItem?.ToLegacyEnum() ?? LaundryServiceType.WashAndDry;
+            set
+            {
+                var match = Data.LaundryServiceTypes.FirstOrDefault(x => x.ToLegacyEnum() == value);
+                if (match != null) SelectedServiceTypeItem = match;
             }
         }
 
@@ -145,6 +164,88 @@ namespace QuanLyDichVuKhachSan.ViewModels
         {
             get => _unitPricePerKg;
             set { if (SetProperty(ref _unitPricePerKg, value)) CalculateTotal(); }
+        }
+
+        private bool _isEditingUnitPrice;
+        private string _unitPriceDisplayText = "30,000 đ";
+        public string UnitPriceDisplayText
+        {
+            get => _unitPriceDisplayText;
+            set
+            {
+                if (SetProperty(ref _unitPriceDisplayText, value))
+                {
+                    if (_isEditingUnitPrice && IsAdmin)
+                    {
+                        string raw = value?.Replace(",", "").Replace(".", "").Replace("đ", "").Trim() ?? "";
+                        if (decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var val) && val > 0)
+                        {
+                            UnitPricePerKg = val;
+                        }
+                    }
+                }
+            }
+        }
+
+        private void SyncUnitPriceDisplayString()
+        {
+            _unitPriceDisplayText = $"{UnitPricePerKg:N0} đ";
+            OnPropertyChanged(nameof(UnitPriceDisplayText));
+        }
+
+        public void BeginEditUnitPrice()
+        {
+            if (!IsAdmin) return;
+            _isEditingUnitPrice = true;
+            _unitPriceDisplayText = UnitPricePerKg.ToString("0", CultureInfo.InvariantCulture);
+            OnPropertyChanged(nameof(UnitPriceDisplayText));
+        }
+
+        public async Task CommitUnitPriceEditAsync()
+        {
+            if (!IsAdmin || SelectedServiceTypeItem == null)
+            {
+                _isEditingUnitPrice = false;
+                SyncUnitPriceDisplayString();
+                return;
+            }
+
+            string raw = UnitPriceDisplayText?.Replace(",", "").Replace(".", "").Replace("đ", "").Trim() ?? "";
+            _isEditingUnitPrice = false;
+
+            if (!decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var newPrice) || newPrice <= 0)
+            {
+                MessageBox.Show("Đơn giá niêm yết phải là số lớn hơn 0 đ/Kg!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                UnitPricePerKg = SelectedServiceTypeItem.DonGiaBanKg;
+                SyncUnitPriceDisplayString();
+                return;
+            }
+
+            if (newPrice != SelectedServiceTypeItem.DonGiaBanKg)
+            {
+                var (ok, err) = await DatabaseService.Instance.UpdateLaundryServiceTypePriceAsync(SelectedServiceTypeItem.Id, newPrice);
+                if (!ok)
+                {
+                    MessageBox.Show(err ?? "Không thể cập nhật đơn giá niêm yết!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    UnitPricePerKg = SelectedServiceTypeItem.DonGiaBanKg;
+                    SyncUnitPriceDisplayString();
+                    return;
+                }
+
+                SelectedServiceTypeItem.DonGiaBanKg = newPrice;
+                foreach (var p in Data.LaundryPartners)
+                {
+                    foreach (var sp in p.ServicePrices.Where(x => x.LoaiDichVuId == SelectedServiceTypeItem.Id))
+                    {
+                        sp.DonGiaBanKg = newPrice;
+                    }
+                    p.NotifyPriceSummaryChanged();
+                }
+                Data.NotifyLaundryDataChanged();
+            }
+
+            UnitPricePerKg = newPrice;
+            SyncUnitPriceDisplayString();
         }
 
         private decimal _totalPrice;
@@ -521,7 +622,23 @@ namespace QuanLyDichVuKhachSan.ViewModels
             });
 
             SelectedPartner = null; // Mặc định có thể để trống khi nhận đồ, giao sau
+            SelectedServiceTypeItem = Data.LaundryServiceTypes.FirstOrDefault();
             AutoSetPricePerKg();
+            RefreshAvailablePartnersForService();
+
+            Auth.AuthStateChanged += () =>
+            {
+                OnPropertyChanged(nameof(IsAdmin));
+                OnPropertyChanged(nameof(IsReceptionist));
+                OnPropertyChanged(nameof(IsUnitPriceReadOnly));
+            };
+
+            Data.LaundryPartners.CollectionChanged += (s, e) => RefreshAvailablePartnersForService();
+            Data.LaundryDataChanged += () =>
+            {
+                RefreshAvailablePartnersForService();
+                AutoSetPricePerKg();
+            };
 
             Data.LaundryOrders.CollectionChanged += (s, e) =>
             {
@@ -581,15 +698,46 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
         }
 
+        public void RefreshAvailablePartnersForService()
+        {
+            var prevPartner = SelectedPartner;
+            AvailablePartnersForService.Clear();
+
+            var filtered = Data.LaundryPartners
+                .Where(p => p.IsActive && (SelectedServiceTypeItem == null || p.SupportsService(SelectedServiceTypeItem)))
+                .ToList();
+
+            foreach (var p in filtered)
+            {
+                AvailablePartnersForService.Add(p);
+            }
+
+            if (prevPartner != null && !AvailablePartnersForService.Any(p => p.Id == prevPartner.Id))
+            {
+                SelectedPartner = null;
+            }
+            else if (!IsDeferredPartner && SelectedPartner == null)
+            {
+                SelectedPartner = AvailablePartnersForService.FirstOrDefault();
+            }
+
+            OnPropertyChanged(nameof(NoPartnerForServiceWarningVisible));
+        }
+
         private void AutoSetPricePerKg()
         {
-            UnitPricePerKg = SelectedServiceType switch
+            if (SelectedServiceTypeItem != null)
             {
-                LaundryServiceType.WashAndDry => 30000,
-                LaundryServiceType.DryCleaning => 80000,
-                LaundryServiceType.Ironing => 40000,
-                _ => 30000
-            };
+                UnitPricePerKg = SelectedServiceTypeItem.DonGiaBanKg;
+            }
+            else
+            {
+                UnitPricePerKg = 30000m;
+            }
+            if (!_isEditingUnitPrice)
+            {
+                SyncUnitPriceDisplayString();
+            }
             CalculateTotal();
         }
 
@@ -598,8 +746,31 @@ namespace QuanLyDichVuKhachSan.ViewModels
             TotalPrice = (WeightKg ?? 0m) * UnitPricePerKg;
         }
 
-        private void CreateOrder(object? parameter)
+        private async void CreateOrder(object? parameter)
         {
+            if (_isEditingUnitPrice && IsAdmin)
+            {
+                await CommitUnitPriceEditAsync();
+            }
+
+            if (SelectedServiceTypeItem == null)
+            {
+                MessageBox.Show("Vui lòng chọn Loại hình dịch vụ giặt!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!IsDeferredPartner && SelectedPartner == null)
+            {
+                MessageBox.Show("⚠️ Chưa chọn đối tác nhận giặt! Vui lòng chọn đối tác phù hợp hoặc tick 'Bàn giao sau'.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!IsDeferredPartner && SelectedPartner != null && !SelectedPartner.SupportsService(SelectedServiceTypeItem))
+            {
+                MessageBox.Show($"⚠️ Đối tác [{SelectedPartner.Name}] không cung cấp dịch vụ [{SelectedServiceTypeItem.TenLoai}]!\nVui lòng chọn đối tác khác hoặc tick 'Bàn giao sau'.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             if (string.IsNullOrWhiteSpace(RoomNumber))
             {
                 MessageBox.Show("⚠️ Dịch vụ Giặt ủi chỉ nhận phục vụ khách lưu trú trong phòng khách sạn (không nhận khách vãng lai)!\n\nVui lòng chọn số phòng của khách.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -664,7 +835,9 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 RoomNumber = normRoom,
                 PartnerId = partnerId,
                 PartnerName = partnerName,
-                ServiceType = SelectedServiceType,
+                ServiceTypeId = SelectedServiceTypeItem.Id,
+                ServiceTypeName = SelectedServiceTypeItem.TenLoai,
+                ServiceType = SelectedServiceTypeItem.ToLegacyEnum(),
                 WeightKg = WeightKg.Value,
                 UnitPricePerKg = UnitPricePerKg,
                 ClothesConditionNote = ClothesConditionNote?.Trim() ?? "",
@@ -773,10 +946,10 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 return;
             }
 
-            var activePartners = Data.LaundryPartners.Where(p => p.IsActive).ToList();
+            var activePartners = Data.LaundryPartners.Where(p => p.IsActive && p.SupportsOrder(order)).ToList();
             if (!activePartners.Any())
             {
-                MessageBox.Show("Hiện không có đối tác giặt ủi nào đang hoạt động để bàn giao!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show($"Hiện không có đối tác giặt ủi nào đang hoạt động có nhận dịch vụ [{order.ServiceTypeDisplay}] để bàn giao!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 

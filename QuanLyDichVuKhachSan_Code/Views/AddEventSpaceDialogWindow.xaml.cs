@@ -20,17 +20,17 @@ namespace QuanLyDichVuKhachSan.Views
         {
             int nextIndex = DataService.Instance.EventSpaces.Count + 1;
             string autoCode = $"KV{nextIndex:D2}";
-            while (DataService.Instance.EventSpaces.Any(x => x.Name.Contains(autoCode)))
+            while (DataService.Instance.EventSpaces.Any(x => x.Id == nextIndex))
             {
                 nextIndex++;
                 autoCode = $"KV{nextIndex:D2}";
             }
 
             TxtCode.Text = autoCode;
-            TxtName.Text = $"Sảnh Sự Kiện {autoCode}";
-            CboSpaceType.Text = "Sảnh lớn";
-            TxtCapacity.Text = "60";
-            TxtHourlyRate.Text = "600,000";
+            TxtName.Text = "";
+            CboSpaceType.SelectedIndex = 0;
+            TxtCapacity.Text = "";
+            TxtHourlyRate.Text = "";
             CboStatus.SelectedIndex = 0;
             TxtEquipments.Text = "";
         }
@@ -48,16 +48,16 @@ namespace QuanLyDichVuKhachSan.Views
                 return;
             }
 
-            string rateStr = TxtHourlyRate.Text.Trim();
-            if (!decimal.TryParse(rateStr, out var rate) || rate <= 0)
-            {
-                MessageBox.Show("Giá thuê theo giờ phải lớn hơn 0!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
             if (!int.TryParse(TxtCapacity.Text.Trim(), out var capacity) || capacity <= 0)
             {
                 MessageBox.Show("Sức chứa phải là số nguyên lớn hơn 0!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            string rateStr = TxtHourlyRate.Text.Replace(",", "").Replace(".", "").Trim();
+            if (!decimal.TryParse(rateStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var rate) || rate <= 0)
+            {
+                MessageBox.Show("Giá thuê theo giờ phải lớn hơn 0!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 

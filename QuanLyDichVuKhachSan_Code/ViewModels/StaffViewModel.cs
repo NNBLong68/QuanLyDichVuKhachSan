@@ -107,8 +107,12 @@ namespace QuanLyDichVuKhachSan.ViewModels
         private string _newStaffPosition = "Lễ tân";
         public string NewStaffPosition { get => _newStaffPosition; set => SetProperty(ref _newStaffPosition, value); }
 
-        private decimal _newStaffSalary = 8000000;
-        public decimal NewStaffSalary { get => _newStaffSalary; set => SetProperty(ref _newStaffSalary, value); }
+        private string _newStaffSalaryInput = "";
+        public string NewStaffSalaryInput
+        {
+            get => _newStaffSalaryInput;
+            set => SetProperty(ref _newStaffSalaryInput, value);
+        }
 
         // Sửa thông tin nhân viên
         private bool _isEditingStaff;
@@ -580,6 +584,13 @@ END";
                 return;
             }
 
+            string salaryStr = NewStaffSalaryInput.Replace(",", "").Replace(".", "").Trim();
+            if (string.IsNullOrWhiteSpace(salaryStr) || !decimal.TryParse(salaryStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsedSalary) || parsedSalary <= 0)
+            {
+                MessageBox.Show("Vui lòng nhập Lương cơ bản hợp lệ (> 0 VNĐ)!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             var newId = Data.StaffList.Count > 0 ? Data.StaffList.Max(x => x.Id) + 1 : 1;
             var staff = new Staff
             {
@@ -590,7 +601,7 @@ END";
                 PhoneNumber = NewStaffPhone.Trim(),
                 Email = NewStaffEmail?.Trim() ?? "",
                 Position = NewStaffPosition,
-                BaseSalary = NewStaffSalary,
+                BaseSalary = parsedSalary,
                 Status = "Đang làm việc"
             };
 
@@ -601,6 +612,7 @@ END";
             NewStaffCccd = "";
             NewStaffPhone = "";
             NewStaffEmail = "";
+            NewStaffSalaryInput = "";
             UpdateNextStaffCode();
 
             // Đồng bộ xuống CSDL SQL Server (Table NhanVien)

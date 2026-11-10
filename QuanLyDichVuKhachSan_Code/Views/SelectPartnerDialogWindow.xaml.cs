@@ -23,8 +23,9 @@ namespace QuanLyDichVuKhachSan.Views
             TxtWeightAndPrice.Text = $"{order.WeightKg} Kg · {order.TotalPrice:N0} đ";
             TxtAppointment.Text = $"{order.AppointmentDate:HH:mm dd/MM/yyyy}";
 
-            CmbPartner.ItemsSource = activePartners;
-            if (activePartners.Count > 0)
+            var compatiblePartners = activePartners.Where(p => p.SupportsOrder(order)).ToList();
+            CmbPartner.ItemsSource = compatiblePartners;
+            if (compatiblePartners.Count > 0)
             {
                 CmbPartner.SelectedIndex = 0;
             }
@@ -39,7 +40,7 @@ namespace QuanLyDichVuKhachSan.Views
                 TxtPartnerAddress.Text = $"📍 Địa chỉ: {p.Address}";
                 TxtPartnerPhone.Text = $"📞 SĐT: {p.PhoneNumber}";
 
-                decimal costPerKg = p.GetCostPriceForService(_order.ServiceType);
+                decimal costPerKg = p.GetCostPriceForOrder(_order);
                 decimal totalCost = Math.Round(_order.WeightKg * costPerKg, 0);
                 decimal hotelProfit = _order.TotalPrice - totalCost;
                 TxtPartnerCommission.Text = $"💰 Giá vốn đối tác nhận: {costPerKg:N0} đ/kg ({totalCost:N0} đ) • Khách sạn lời: {hotelProfit:N0} đ";

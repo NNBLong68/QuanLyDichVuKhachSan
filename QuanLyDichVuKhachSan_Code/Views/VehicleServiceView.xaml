@@ -129,8 +129,7 @@
                                                 </StackPanel>
 
                                                 <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="10,0,10,0" HorizontalAlignment="Right">
-                                                    <TextBlock Text="{Binding DailyRate, StringFormat='{}{0:N0} đ/ngày'}" FontWeight="Bold" FontSize="12" Foreground="#D97706"/>
-                                                    <TextBlock Text="{Binding RequiredDeposit, StringFormat='{}Cọc: {0:N0} đ'}" FontSize="11" Foreground="#64748B"/>
+                                                    <TextBlock Text="{Binding DailyRate, StringFormat='{}{0:N0} đ/ngày'}" FontWeight="Bold" FontSize="12" Foreground="#D97706" VerticalAlignment="Center"/>
                                                 </StackPanel>
 
                                                 <!-- Trạng thái xe -->

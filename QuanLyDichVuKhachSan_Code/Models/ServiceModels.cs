@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 
 namespace QuanLyDichVuKhachSan.Models
 {
@@ -999,6 +1001,126 @@ namespace QuanLyDichVuKhachSan.Models
         }
     }
 
+    public class LaundryServiceTypeItem : INotifyPropertyChanged
+    {
+        public int Id { get; set; }
+        public string MaLoai { get; set; } = string.Empty;
+
+        private string _tenLoai = string.Empty;
+        public string TenLoai
+        {
+            get => _tenLoai;
+            set
+            {
+                if (_tenLoai != value)
+                {
+                    _tenLoai = value;
+                    OnPropertyChanged(nameof(TenLoai));
+                    OnPropertyChanged(nameof(Icon));
+                    OnPropertyChanged(nameof(DisplayText));
+                    OnPropertyChanged(nameof(ComboDisplayWithPrice));
+                }
+            }
+        }
+
+        private decimal _donGiaBanKg;
+        public decimal DonGiaBanKg
+        {
+            get => _donGiaBanKg;
+            set
+            {
+                if (_donGiaBanKg != value)
+                {
+                    _donGiaBanKg = value;
+                    OnPropertyChanged(nameof(DonGiaBanKg));
+                    OnPropertyChanged(nameof(DisplayText));
+                    OnPropertyChanged(nameof(ComboDisplayWithPrice));
+                }
+            }
+        }
+
+        public string DonViTinh { get; set; } = "Kg";
+        public int HeSoBoiThuongToiDa { get; set; } = 10;
+        public bool DangKinhDoanh { get; set; } = true;
+
+        public string Icon
+        {
+            get
+            {
+                string t = TenLoai.ToLowerInvariant();
+                if (t.Contains("hấp") || t.Contains("vest")) return "👔";
+                if (t.Contains("ủi")) return "✨";
+                return "🧺";
+            }
+        }
+
+        public string DisplayText => $"{Icon} {TenLoai} ({DonGiaBanKg:N0} đ/{DonViTinh})";
+        public string ComboDisplayWithPrice => $"{TenLoai} ({DonGiaBanKg:N0} đ/{DonViTinh})";
+
+        public LaundryServiceType ToLegacyEnum()
+        {
+            if (MaLoai == "GIAT_HAP" || TenLoai.Contains("hấp", StringComparison.OrdinalIgnoreCase))
+                return LaundryServiceType.DryCleaning;
+            if (MaLoai == "UI_PHANG" || TenLoai.Contains("ủi", StringComparison.OrdinalIgnoreCase))
+                return LaundryServiceType.Ironing;
+            return LaundryServiceType.WashAndDry;
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    public class PartnerServicePriceItem : INotifyPropertyChanged
+    {
+        public int LoaiDichVuId { get; set; }
+        public string MaLoai { get; set; } = string.Empty;
+        public string TenLoai { get; set; } = string.Empty;
+
+        private decimal _donGiaBanKg;
+        public decimal DonGiaBanKg
+        {
+            get => _donGiaBanKg;
+            set
+            {
+                if (_donGiaBanKg != value)
+                {
+                    _donGiaBanKg = value;
+                    OnPropertyChanged(nameof(DonGiaBanKg));
+                    OnPropertyChanged(nameof(LoiNhuanKg));
+                    OnPropertyChanged(nameof(ProfitDisplay));
+                }
+            }
+        }
+
+        private decimal _donGiaVonKg;
+        public decimal DonGiaVonKg
+        {
+            get => _donGiaVonKg;
+            set
+            {
+                if (_donGiaVonKg != value)
+                {
+                    _donGiaVonKg = value;
+                    OnPropertyChanged(nameof(DonGiaVonKg));
+                    OnPropertyChanged(nameof(LoiNhuanKg));
+                    OnPropertyChanged(nameof(ProfitDisplay));
+                }
+            }
+        }
+
+        public decimal LoiNhuanKg => DonGiaBanKg - DonGiaVonKg;
+        public string ProfitDisplay => LoiNhuanKg > 0 ? $"Lời: {LoiNhuanKg:N0}đ/kg" : "⚠️ Lỗ vốn!";
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
     public class LaundryPartner : INotifyPropertyChanged
     {
         public int Id { get; set; }
@@ -1062,8 +1184,11 @@ namespace QuanLyDichVuKhachSan.Models
 
         public decimal PartnerRate => 100.0m - HotelCommissionRate;
 
-        // Bảng giá vốn theo từng dịch vụ mà đối tác báo giá (Bắt buộc nhỏ hơn giá niêm yết của KS)
-        private decimal _giaVonGiatSay = 21000m;
+        // Danh sách các loại hình dịch vụ & giá vốn thực tế mà đối tác này hỗ trợ
+        public ObservableCollection<PartnerServicePriceItem> ServicePrices { get; set; } = new();
+
+        // Thuộc tính tương thích ngược (lưu theo từng dịch vụ cơ bản nếu có)
+        private decimal _giaVonGiatSay;
         public decimal GiaVonGiatSay
         {
             get => _giaVonGiatSay;
@@ -1078,7 +1203,7 @@ namespace QuanLyDichVuKhachSan.Models
             }
         }
 
-        private decimal _giaVonGiatHap = 56000m;
+        private decimal _giaVonGiatHap;
         public decimal GiaVonGiatHap
         {
             get => _giaVonGiatHap;
@@ -1093,7 +1218,7 @@ namespace QuanLyDichVuKhachSan.Models
             }
         }
 
-        private decimal _giaVonUiPhang = 28000m;
+        private decimal _giaVonUiPhang;
         public decimal GiaVonUiPhang
         {
             get => _giaVonUiPhang;
@@ -1108,16 +1233,132 @@ namespace QuanLyDichVuKhachSan.Models
             }
         }
 
-        public string PriceSummary => $"Sấy: {GiaVonGiatSay:N0}đ • Hấp: {GiaVonGiatHap:N0}đ • Ủi: {GiaVonUiPhang:N0}đ";
+        public void NotifyPriceSummaryChanged()
+        {
+            OnPropertyChanged(nameof(PriceSummary));
+            OnPropertyChanged(nameof(ServicePrices));
+        }
+
+        public string PriceSummary
+        {
+            get
+            {
+                if (ServicePrices != null && ServicePrices.Count > 0)
+                {
+                    return string.Join(" • ", ServicePrices.Select(sp => $"{sp.TenLoai}: {sp.DonGiaVonKg:N0}đ"));
+                }
+                var parts = new List<string>();
+                if (GiaVonGiatSay > 0) parts.Add($"Sấy: {GiaVonGiatSay:N0}đ");
+                if (GiaVonGiatHap > 0) parts.Add($"Hấp: {GiaVonGiatHap:N0}đ");
+                if (GiaVonUiPhang > 0) parts.Add($"Ủi: {GiaVonUiPhang:N0}đ");
+                return parts.Count > 0 ? string.Join(" • ", parts) : "Chưa thiết lập giá vốn dịch vụ";
+            }
+        }
+
+        public bool SupportsService(LaundryServiceTypeItem? serviceType)
+        {
+            if (serviceType == null) return false;
+            return SupportsService(serviceType.Id, serviceType.TenLoai);
+        }
+
+        public bool SupportsService(int serviceTypeId, string? serviceTypeName)
+        {
+            if (ServicePrices != null && ServicePrices.Count > 0)
+            {
+                return ServicePrices.Any(sp =>
+                    (serviceTypeId > 0 && sp.LoaiDichVuId == serviceTypeId) ||
+                    (!string.IsNullOrWhiteSpace(serviceTypeName) && string.Equals(sp.TenLoai, serviceTypeName, StringComparison.OrdinalIgnoreCase)));
+            }
+            return false;
+        }
+
+        public bool SupportsOrder(LaundryOrder? order)
+        {
+            if (order == null) return false;
+            if (ServicePrices != null && ServicePrices.Count > 0)
+            {
+                if (order.ServiceTypeId > 0 || !string.IsNullOrWhiteSpace(order.ServiceTypeName))
+                    return SupportsService(order.ServiceTypeId, order.ServiceTypeName);
+                return SupportsService(order.ServiceType);
+            }
+            return SupportsService(order.ServiceType);
+        }
+
+        public bool SupportsService(LaundryServiceType serviceType)
+        {
+            if (ServicePrices != null && ServicePrices.Count > 0)
+            {
+                string key = serviceType switch
+                {
+                    LaundryServiceType.WashAndDry => "GIAT_SAY",
+                    LaundryServiceType.DryCleaning => "GIAT_HAP",
+                    LaundryServiceType.Ironing => "UI_PHANG",
+                    _ => ""
+                };
+                return ServicePrices.Any(sp =>
+                    string.Equals(sp.MaLoai, key, StringComparison.OrdinalIgnoreCase) ||
+                    (serviceType == LaundryServiceType.WashAndDry && sp.TenLoai.Contains("sấy", StringComparison.OrdinalIgnoreCase)) ||
+                    (serviceType == LaundryServiceType.DryCleaning && sp.TenLoai.Contains("hấp", StringComparison.OrdinalIgnoreCase)) ||
+                    (serviceType == LaundryServiceType.Ironing && sp.TenLoai.Contains("ủi", StringComparison.OrdinalIgnoreCase)));
+            }
+            return serviceType switch
+            {
+                LaundryServiceType.WashAndDry => GiaVonGiatSay > 0,
+                LaundryServiceType.DryCleaning => GiaVonGiatHap > 0,
+                LaundryServiceType.Ironing => GiaVonUiPhang > 0,
+                _ => false
+            };
+        }
+
+        public bool TryGetCostPrice(int serviceTypeId, string? serviceTypeName, out decimal costPrice)
+        {
+            costPrice = 0m;
+            if (ServicePrices != null)
+            {
+                var match = ServicePrices.FirstOrDefault(sp =>
+                    (serviceTypeId > 0 && sp.LoaiDichVuId == serviceTypeId) ||
+                    (!string.IsNullOrWhiteSpace(serviceTypeName) && string.Equals(sp.TenLoai, serviceTypeName, StringComparison.OrdinalIgnoreCase)));
+                if (match != null && match.DonGiaVonKg > 0)
+                {
+                    costPrice = match.DonGiaVonKg;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public decimal GetCostPriceForOrder(LaundryOrder? order)
+        {
+            if (order == null) return 0m;
+            if (TryGetCostPrice(order.ServiceTypeId, order.ServiceTypeName, out var cost))
+                return cost;
+            return GetCostPriceForService(order.ServiceType);
+        }
 
         public decimal GetCostPriceForService(LaundryServiceType serviceType)
         {
+            if (ServicePrices != null && ServicePrices.Count > 0)
+            {
+                string key = serviceType switch
+                {
+                    LaundryServiceType.WashAndDry => "GIAT_SAY",
+                    LaundryServiceType.DryCleaning => "GIAT_HAP",
+                    LaundryServiceType.Ironing => "UI_PHANG",
+                    _ => ""
+                };
+                var match = ServicePrices.FirstOrDefault(sp =>
+                    string.Equals(sp.MaLoai, key, StringComparison.OrdinalIgnoreCase) ||
+                    (serviceType == LaundryServiceType.WashAndDry && sp.TenLoai.Contains("sấy", StringComparison.OrdinalIgnoreCase)) ||
+                    (serviceType == LaundryServiceType.DryCleaning && sp.TenLoai.Contains("hấp", StringComparison.OrdinalIgnoreCase)) ||
+                    (serviceType == LaundryServiceType.Ironing && sp.TenLoai.Contains("ủi", StringComparison.OrdinalIgnoreCase)));
+                if (match != null && match.DonGiaVonKg > 0) return match.DonGiaVonKg;
+            }
             return serviceType switch
             {
-                LaundryServiceType.WashAndDry => GiaVonGiatSay > 0 ? GiaVonGiatSay : Math.Round(30000m * (PartnerRate / 100m), 0),
-                LaundryServiceType.DryCleaning => GiaVonGiatHap > 0 ? GiaVonGiatHap : Math.Round(80000m * (PartnerRate / 100m), 0),
-                LaundryServiceType.Ironing => GiaVonUiPhang > 0 ? GiaVonUiPhang : Math.Round(40000m * (PartnerRate / 100m), 0),
-                _ => Math.Round(30000m * (PartnerRate / 100m), 0)
+                LaundryServiceType.WashAndDry => GiaVonGiatSay,
+                LaundryServiceType.DryCleaning => GiaVonGiatHap,
+                LaundryServiceType.Ironing => GiaVonUiPhang,
+                _ => 0m
             };
         }
 
@@ -1130,7 +1371,8 @@ namespace QuanLyDichVuKhachSan.Models
                 LaundryServiceType.Ironing => 40000m,
                 _ => 30000m
             };
-            return retailPrice - GetCostPriceForService(serviceType);
+            decimal cost = GetCostPriceForService(serviceType);
+            return cost > 0 ? retailPrice - cost : 0m;
         }
 
         private bool _isActive = true;
@@ -1199,6 +1441,8 @@ namespace QuanLyDichVuKhachSan.Models
         public bool HasPartner => PartnerId > 0 && !string.IsNullOrWhiteSpace(PartnerName) && !PartnerName.Contains("Chờ");
         public string PartnerDisplay => HasPartner ? PartnerName : "⏳ Chờ giao đối tác";
 
+        public int ServiceTypeId { get; set; }
+        public string ServiceTypeName { get; set; } = string.Empty;
         public LaundryServiceType ServiceType { get; set; }
         public decimal WeightKg { get; set; }
         public decimal UnitPricePerKg { get; set; }
@@ -1296,14 +1540,19 @@ namespace QuanLyDichVuKhachSan.Models
 
         public string ServiceTypeDisplay
         {
-            get => ServiceType switch
+            get
             {
-                LaundryServiceType.WashAndDry => "Giặt sấy thông thường",
-                LaundryServiceType.DryCleaning => "Giặt hấp cao cấp",
-                LaundryServiceType.Ironing => "Ủi phẳng",
-                _ => "Khác"
-            };
-            set { }
+                if (!string.IsNullOrWhiteSpace(ServiceTypeName))
+                    return ServiceTypeName;
+                return ServiceType switch
+                {
+                    LaundryServiceType.WashAndDry => "Giặt sấy thông thường",
+                    LaundryServiceType.DryCleaning => "Giặt hấp cao cấp",
+                    LaundryServiceType.Ironing => "Ủi phẳng",
+                    _ => "Khác"
+                };
+            }
+            set => ServiceTypeName = value;
         }
 
         public string StatusDisplay

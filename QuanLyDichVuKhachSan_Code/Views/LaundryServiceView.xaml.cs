@@ -49,6 +49,59 @@ namespace QuanLyDichVuKhachSan.Views
             dlg.ShowDialog();
         }
 
+        private void ServiceTypeCombo_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (!AuthService.Instance.IsAdmin)
+            {
+                e.Handled = true; // Chỉ tài khoản Admin mới có quyền thêm loại hình dịch vụ giặt
+            }
+        }
+
+        private void MenuItem_AddServiceType_Click(object sender, RoutedEventArgs e)
+        {
+            if (!AuthService.Instance.IsAdmin)
+            {
+                MessageBox.Show("Chỉ tài khoản Admin mới có quyền thêm loại hình dịch vụ giặt mới!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var dlg = new AddLaundryServiceTypeDialogWindow();
+            if (dlg.ShowDialog() == true && dlg.CreatedServiceType != null)
+            {
+                if (DataContext is LaundryViewModel vm)
+                {
+                    vm.SelectedServiceTypeItem = dlg.CreatedServiceType;
+                }
+            }
+        }
+
+        private void TxtUnitPrice_GotFocus(object sender, RoutedEventArgs e)
+        {
+            if (AuthService.Instance.IsAdmin && DataContext is LaundryViewModel vm)
+            {
+                vm.BeginEditUnitPrice();
+                Dispatcher.InvokeAsync(() => TxtUnitPrice.SelectAll(), System.Windows.Threading.DispatcherPriority.Input);
+            }
+        }
+
+        private async void TxtUnitPrice_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is LaundryViewModel vm)
+            {
+                await vm.CommitUnitPriceEditAsync();
+            }
+        }
+
+        private async void TxtUnitPrice_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter && DataContext is LaundryViewModel vm)
+            {
+                await vm.CommitUnitPriceEditAsync();
+                System.Windows.Input.Keyboard.ClearFocus();
+                e.Handled = true;
+            }
+        }
+
         private void PartnerBorder_ContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
             if (!AuthService.Instance.IsAdmin)
@@ -167,35 +220,44 @@ namespace QuanLyDichVuKhachSan.Views
 
                     foreach (var partner in activePartners)
                     {
+                        bool supportsAll = dispatchableOrders.All(ord => partner.SupportsOrder(ord));
                         var partnerItem = new MenuItem
                         {
-                            Header = $"🏢 {partner.Name} (SĐT: {partner.PhoneNumber})",
-                            FontWeight = FontWeights.SemiBold,
-                            Foreground = new SolidColorBrush(Color.FromRgb(2, 132, 199)),
-                            ToolTip = $"Click để bàn giao ngay {dispatchableOrders.Count} đơn đã chọn cho [{partner.Name}]"
+                            Header = supportsAll
+                                ? $"🏢 {partner.Name} (SĐT: {partner.PhoneNumber})"
+                                : $"⛔ {partner.Name} (Không nhận đủ các dịch vụ đã chọn)",
+                            FontWeight = supportsAll ? FontWeights.SemiBold : FontWeights.Normal,
+                            Foreground = supportsAll ? new SolidColorBrush(Color.FromRgb(2, 132, 199)) : new SolidColorBrush(Color.FromRgb(148, 163, 184)),
+                            IsEnabled = supportsAll,
+                            ToolTip = supportsAll
+                                ? $"Click để bàn giao ngay {dispatchableOrders.Count} đơn đã chọn cho [{partner.Name}]"
+                                : $"Tiệm [{partner.Name}] chưa đăng ký làm tất cả các loại dịch vụ trong nhóm đơn đã chọn."
                         };
 
-                        partnerItem.Click += (s, ev) =>
+                        if (supportsAll)
                         {
-                            int successCount = 0;
-                            foreach (var ord in dispatchableOrders)
+                            partnerItem.Click += (s, ev) =>
                             {
-                                DataService.Instance.AssignPartnerToLaundryOrder(ord, partner);
-                                successCount++;
-                            }
+                                int successCount = 0;
+                                foreach (var ord in dispatchableOrders)
+                                {
+                                    DataService.Instance.AssignPartnerToLaundryOrder(ord, partner);
+                                    successCount++;
+                                }
 
-                            (DataContext as ViewModels.LaundryViewModel)?.RefreshPendingReturns();
-                            (DataContext as ViewModels.LaundryViewModel)?.ApplyLaundryFilter();
+                                (DataContext as ViewModels.LaundryViewModel)?.RefreshPendingReturns();
+                                (DataContext as ViewModels.LaundryViewModel)?.ApplyLaundryFilter();
 
-                            MessageBox.Show(
-                                $"Đã bàn giao thành công {successCount} đơn giặt ủi cho đối tác [{partner.Name}]!\n\n" +
-                                $"• Tổng trọng lượng: {totalWeight:0.#} kg\n" +
-                                $"• Trạng thái các đơn đã chuyển sang 'Đang giặt'.",
-                                "Thông báo",
-                                MessageBoxButton.OK,
-                                MessageBoxImage.Information
-                            );
-                        };
+                                MessageBox.Show(
+                                    $"Đã bàn giao thành công {successCount} đơn giặt ủi cho đối tác [{partner.Name}]!\n\n" +
+                                    $"• Tổng trọng lượng: {totalWeight:0.#} kg\n" +
+                                    $"• Trạng thái các đơn đã chuyển sang 'Đang giặt'.",
+                                    "Thông báo",
+                                    MessageBoxButton.OK,
+                                    MessageBoxImage.Information
+                                );
+                            };
+                        }
 
                         contextMenu.Items.Add(partnerItem);
                     }
@@ -271,34 +333,43 @@ namespace QuanLyDichVuKhachSan.Views
 
                     foreach (var partner in activePartners)
                     {
-                        decimal costPerKg = partner.GetCostPriceForService(singleOrder.ServiceType);
+                        bool supports = partner.SupportsOrder(singleOrder);
+                        decimal costPerKg = supports ? partner.GetCostPriceForOrder(singleOrder) : 0m;
                         decimal totalCost = Math.Round(singleOrder.WeightKg * costPerKg, 0);
                         decimal hotelProfit = singleOrder.TotalPrice - totalCost;
 
                         var partnerItem = new MenuItem
                         {
-                            Header = $"🏢 {partner.Name} (Giá vốn: {costPerKg:N0} đ/kg · KS lời: {hotelProfit:N0} đ)",
-                            FontWeight = FontWeights.SemiBold,
-                            Foreground = new SolidColorBrush(Color.FromRgb(2, 132, 199)),
-                            ToolTip = $"Địa chỉ: {partner.Address}\nSĐT: {partner.PhoneNumber}\n\n👉 Click chuột trái để bàn giao ngay cho [{partner.Name}]"
+                            Header = supports
+                                ? $"🏢 {partner.Name} (Giá vốn: {costPerKg:N0} đ/kg · KS lời: {hotelProfit:N0} đ)"
+                                : $"⛔ {partner.Name} (Không nhận dịch vụ {singleOrder.ServiceTypeDisplay})",
+                            FontWeight = supports ? FontWeights.SemiBold : FontWeights.Normal,
+                            Foreground = supports ? new SolidColorBrush(Color.FromRgb(2, 132, 199)) : new SolidColorBrush(Color.FromRgb(148, 163, 184)),
+                            IsEnabled = supports,
+                            ToolTip = supports
+                                ? $"Địa chỉ: {partner.Address}\nSĐT: {partner.PhoneNumber}\n\n👉 Click chuột trái để bàn giao ngay cho [{partner.Name}]"
+                                : $"Đối tác [{partner.Name}] không có dịch vụ [{singleOrder.ServiceTypeDisplay}] trong bảng giá vốn."
                         };
 
-                        partnerItem.Click += (s, ev) =>
+                        if (supports)
                         {
-                            DataService.Instance.AssignPartnerToLaundryOrder(singleOrder, partner);
-                            (DataContext as ViewModels.LaundryViewModel)?.RefreshPendingReturns();
-                            (DataContext as ViewModels.LaundryViewModel)?.ApplyLaundryFilter();
+                            partnerItem.Click += (s, ev) =>
+                            {
+                                DataService.Instance.AssignPartnerToLaundryOrder(singleOrder, partner);
+                                (DataContext as ViewModels.LaundryViewModel)?.RefreshPendingReturns();
+                                (DataContext as ViewModels.LaundryViewModel)?.ApplyLaundryFilter();
 
-                            MessageBox.Show(
-                                $"Đã bàn giao đơn hàng {singleOrder.OrderCode} cho đối tác [{partner.Name}] thành công!\n\n" +
-                                $"• Trạng thái: Đang giặt\n" +
-                                $"• Giá vốn: {costPerKg:N0} đ/kg ({totalCost:N0} đ)\n" +
-                                $"• Khách sạn lời: {hotelProfit:N0} đ",
-                                "Thông báo",
-                                MessageBoxButton.OK,
-                                MessageBoxImage.Information
-                            );
-                        };
+                                MessageBox.Show(
+                                    $"Đã bàn giao đơn hàng {singleOrder.OrderCode} cho đối tác [{partner.Name}] thành công!\n\n" +
+                                    $"• Trạng thái: Đang giặt\n" +
+                                    $"• Giá vốn: {costPerKg:N0} đ/kg ({totalCost:N0} đ)\n" +
+                                    $"• Khách sạn lời: {hotelProfit:N0} đ",
+                                    "Thông báo",
+                                    MessageBoxButton.OK,
+                                    MessageBoxImage.Information
+                                );
+                            };
+                        }
 
                         contextMenu.Items.Add(partnerItem);
                     }
@@ -310,7 +381,13 @@ namespace QuanLyDichVuKhachSan.Views
                     };
                     openDialogItem.Click += (s, ev) =>
                     {
-                        var dlg = new SelectPartnerDialogWindow(activePartners, singleOrder);
+                        var compatible = activePartners.Where(p => p.SupportsOrder(singleOrder)).ToList();
+                        if (!compatible.Any())
+                        {
+                            MessageBox.Show($"Hiện chưa có đối tác đang hợp tác nào hỗ trợ dịch vụ [{singleOrder.ServiceTypeDisplay}]!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            return;
+                        }
+                        var dlg = new SelectPartnerDialogWindow(compatible, singleOrder);
                         if (dlg.ShowDialog() == true && dlg.SelectedPartner != null)
                         {
                             DataService.Instance.AssignPartnerToLaundryOrder(singleOrder, dlg.SelectedPartner);

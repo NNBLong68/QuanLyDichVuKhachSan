@@ -1320,54 +1320,215 @@ namespace QuanLyDichVuKhachSan.Services
         }
 
         /// <summary>
+        /// Đọc danh sách Loại hình dịch vụ giặt ủi từ CSDL (Table LoaiDichVuGiatUi)
+        /// </summary>
+        public List<LaundryServiceTypeItem> LoadLaundryServiceTypesFromDb()
+        {
+            var list = new List<LaundryServiceTypeItem>();
+            try
+            {
+                using var conn = new SqlConnection(ConnectionString);
+                conn.Open();
+                string query = @"SELECT Id, MaLoai, TenLoai, DonGiaBanKg, DonViTinh, HeSoBoiThuongToiDa, DangKinhDoanh
+                                 FROM LoaiDichVuGiatUi
+                                 WHERE DangKinhDoanh = 1
+                                 ORDER BY Id";
+                using var cmd = new SqlCommand(query, conn);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    list.Add(new LaundryServiceTypeItem
+                    {
+                        Id = SafeGetInt(reader, "Id"),
+                        MaLoai = SafeGetString(reader, "MaLoai"),
+                        TenLoai = SafeGetString(reader, "TenLoai"),
+                        DonGiaBanKg = SafeGetDecimal(reader, "DonGiaBanKg"),
+                        DonViTinh = SafeGetString(reader, "DonViTinh"),
+                        HeSoBoiThuongToiDa = SafeGetInt(reader, "HeSoBoiThuongToiDa"),
+                        DangKinhDoanh = SafeGetBool(reader, "DangKinhDoanh")
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SQL Error] LoadLaundryServiceTypesFromDb: {ex.Message}");
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Thêm mới Loại hình dịch vụ giặt ủi vào CSDL (Chỉ Admin)
+        /// </summary>
+        public async Task<(LaundryServiceTypeItem? Item, string? ErrorMessage)> AddLaundryServiceTypeAsync(string tenLoai, decimal donGiaBanKg)
+        {
+            try
+            {
+                using var conn = new SqlConnection(ConnectionString);
+                await conn.OpenAsync();
+
+                // Kiểm tra trùng tên
+                using (var checkCmd = new SqlCommand("SELECT COUNT(1) FROM LoaiDichVuGiatUi WHERE LOWER(TenLoai) = LOWER(@Ten)", conn))
+                {
+                    checkCmd.Parameters.AddWithValue("@Ten", tenLoai.Trim());
+                    int exists = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
+                    if (exists > 0)
+                    {
+                        return (null, $"Loại hình dịch vụ [{tenLoai}] đã tồn tại trong danh sách!");
+                    }
+                }
+
+                // Sinh MaLoai tự động đảm bảo duy nhất
+                int nextIdx = 1;
+                using (var maxCmd = new SqlCommand("SELECT ISNULL(MAX(Id), 0) + 1 FROM LoaiDichVuGiatUi", conn))
+                {
+                    nextIdx = Convert.ToInt32(await maxCmd.ExecuteScalarAsync());
+                }
+                string maLoai = $"DV_GU_{nextIdx:D2}";
+                while (true)
+                {
+                    using var codeCheck = new SqlCommand("SELECT COUNT(1) FROM LoaiDichVuGiatUi WHERE MaLoai = @Ma", conn);
+                    codeCheck.Parameters.AddWithValue("@Ma", maLoai);
+                    if (Convert.ToInt32(await codeCheck.ExecuteScalarAsync()) == 0) break;
+                    nextIdx++;
+                    maLoai = $"DV_GU_{nextIdx:D2}";
+                }
+
+                string insertSql = @"INSERT INTO LoaiDichVuGiatUi (MaLoai, TenLoai, DonGiaBanKg, DonViTinh, HeSoBoiThuongToiDa, DangKinhDoanh)
+                                     OUTPUT INSERTED.Id
+                                     VALUES (@MaLoai, @TenLoai, @DonGia, N'Kg', 10, 1)";
+                using var cmd = new SqlCommand(insertSql, conn);
+                cmd.Parameters.AddWithValue("@MaLoai", maLoai);
+                cmd.Parameters.AddWithValue("@TenLoai", tenLoai.Trim());
+                cmd.Parameters.AddWithValue("@DonGia", donGiaBanKg);
+
+                int newId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                var created = new LaundryServiceTypeItem
+                {
+                    Id = newId,
+                    MaLoai = maLoai,
+                    TenLoai = tenLoai.Trim(),
+                    DonGiaBanKg = donGiaBanKg,
+                    DonViTinh = "Kg",
+                    HeSoBoiThuongToiDa = 10,
+                    DangKinhDoanh = true
+                };
+                return (created, null);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SQL Error] AddLaundryServiceTypeAsync: {ex.Message}");
+                return (null, $"Lỗi CSDL khi thêm loại hình dịch vụ: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Cập nhật Đơn giá/Kg niêm yết của 1 Loại hình dịch vụ giặt ủi (Chỉ Admin)
+        /// </summary>
+        public async Task<(bool Success, string? ErrorMessage)> UpdateLaundryServiceTypePriceAsync(int serviceTypeId, decimal newPrice)
+        {
+            try
+            {
+                using var conn = new SqlConnection(ConnectionString);
+                await conn.OpenAsync();
+
+                // Kiểm tra xem có đối tác nào đang có giá vốn >= giá niêm yết mới hay không
+                string checkSql = @"
+                    SELECT TOP 1 dt.TenDoiTac, bg.DonGiaVonKg
+                    FROM BangGiaDoiTacGiatUi bg
+                    JOIN DoiTacGiatUi dt ON dt.Id = bg.DoiTacId
+                    WHERE bg.LoaiDichVuId = @Id AND bg.DonGiaVonKg >= @NewPrice";
+                using (var checkCmd = new SqlCommand(checkSql, conn))
+                {
+                    checkCmd.Parameters.AddWithValue("@Id", serviceTypeId);
+                    checkCmd.Parameters.AddWithValue("@NewPrice", newPrice);
+                    using var r = await checkCmd.ExecuteReaderAsync();
+                    if (await r.ReadAsync())
+                    {
+                        string partnerName = SafeGetString(r, "TenDoiTac");
+                        decimal cost = SafeGetDecimal(r, "DonGiaVonKg");
+                        return (false, $"Không thể đặt giá niêm yết ({newPrice:N0} đ/Kg) thấp hơn hoặc bằng giá vốn của đối tác [{partnerName}] ({cost:N0} đ/Kg)!");
+                    }
+                }
+
+                using var cmd = new SqlCommand("UPDATE LoaiDichVuGiatUi SET DonGiaBanKg = @NewPrice WHERE Id = @Id", conn);
+                cmd.Parameters.AddWithValue("@NewPrice", newPrice);
+                cmd.Parameters.AddWithValue("@Id", serviceTypeId);
+                await cmd.ExecuteNonQueryAsync();
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SQL Error] UpdateLaundryServiceTypePriceAsync: {ex.Message}");
+                return (false, $"Lỗi CSDL khi cập nhật giá niêm yết: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Đọc toàn bộ Đối tác Giặt ủi kèm Bảng giá vốn dịch vụ (Table DoiTacGiatUi JOIN BangGiaDoiTacGiatUi)
         /// </summary>
         public List<LaundryPartner> LoadLaundryPartnersFromDb()
         {
             var list = new List<LaundryPartner>();
+            var partnerMap = new Dictionary<int, LaundryPartner>();
             try
             {
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
-                string query = @"
-                    SELECT dt.*,
-                           MAX(CASE WHEN ldv.MaLoai = 'GIAT_SAY' OR ldv.TenLoai LIKE N'%sấy%' THEN bg.DonGiaVonKg END) AS GiaVonGiatSay,
-                           MAX(CASE WHEN ldv.MaLoai = 'GIAT_HAP' OR ldv.TenLoai LIKE N'%hấp%' THEN bg.DonGiaVonKg END) AS GiaVonGiatHap,
-                           MAX(CASE WHEN ldv.MaLoai = 'UI_PHANG' OR ldv.TenLoai LIKE N'%ủi%' THEN bg.DonGiaVonKg END) AS GiaVonUiPhang
-                    FROM DoiTacGiatUi dt
-                    LEFT JOIN BangGiaDoiTacGiatUi bg ON bg.DoiTacId = dt.Id
-                    LEFT JOIN LoaiDichVuGiatUi ldv ON ldv.Id = bg.LoaiDichVuId
-                    GROUP BY dt.Id, dt.TenDoiTac, dt.DiaChi, dt.SoDienThoai, dt.HanThanhToanCongNo, dt.TyLeKhachSanHuong, dt.TyLeDoiTacHuong, dt.TrangThai
-                    ORDER BY dt.Id";
-                using var cmd = new SqlCommand(query, conn);
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
+
+                using (var cmd = new SqlCommand("SELECT * FROM DoiTacGiatUi ORDER BY Id", conn))
+                using (var reader = cmd.ExecuteReader())
                 {
-                    decimal rate = SafeGetDecimal(reader, "TyLeKhachSanHuong", "HotelCommissionRate");
-                    if (rate <= 0) rate = 30m;
-                    decimal partnerRate = 100m - rate;
-
-                    decimal costSay = SafeGetDecimal(reader, "GiaVonGiatSay");
-                    decimal costHap = SafeGetDecimal(reader, "GiaVonGiatHap");
-                    decimal costUi = SafeGetDecimal(reader, "GiaVonUiPhang");
-
-                    if (costSay <= 0) costSay = Math.Round(30000m * (partnerRate / 100m), 0);
-                    if (costHap <= 0) costHap = Math.Round(80000m * (partnerRate / 100m), 0);
-                    if (costUi <= 0) costUi = Math.Round(40000m * (partnerRate / 100m), 0);
-
-                    list.Add(new LaundryPartner
+                    while (reader.Read())
                     {
-                        Id = SafeGetInt(reader, "Id"),
-                        Name = SafeGetString(reader, "TenDoiTac", "Name"),
-                        Address = SafeGetString(reader, "DiaChi", "Address"),
-                        PhoneNumber = SafeGetString(reader, "SoDienThoai", "PhoneNumber"),
-                        HotelCommissionRate = rate,
-                        GiaVonGiatSay = costSay,
-                        GiaVonGiatHap = costHap,
-                        GiaVonUiPhang = costUi,
-                        IsActive = SafeGetBool(reader, "TrangThai")
-                    });
+                        decimal rate = SafeGetDecimal(reader, "TyLeKhachSanHuong", "HotelCommissionRate");
+                        var partner = new LaundryPartner
+                        {
+                            Id = SafeGetInt(reader, "Id"),
+                            Name = SafeGetString(reader, "TenDoiTac", "Name"),
+                            Address = SafeGetString(reader, "DiaChi", "Address"),
+                            PhoneNumber = SafeGetString(reader, "SoDienThoai", "PhoneNumber"),
+                            HotelCommissionRate = rate,
+                            IsActive = SafeGetBool(reader, "TrangThai")
+                        };
+                        list.Add(partner);
+                        partnerMap[partner.Id] = partner;
+                    }
                 }
+
+                string priceQuery = @"
+                    SELECT bg.DoiTacId, bg.LoaiDichVuId, bg.DonGiaVonKg,
+                           ldv.MaLoai, ldv.TenLoai, ldv.DonGiaBanKg
+                    FROM BangGiaDoiTacGiatUi bg
+                    JOIN LoaiDichVuGiatUi ldv ON ldv.Id = bg.LoaiDichVuId
+                    ORDER BY bg.DoiTacId, bg.LoaiDichVuId";
+                using (var cmdPrice = new SqlCommand(priceQuery, conn))
+                using (var readerPrice = cmdPrice.ExecuteReader())
+                {
+                    while (readerPrice.Read())
+                    {
+                        int partnerId = SafeGetInt(readerPrice, "DoiTacId");
+                        if (!partnerMap.TryGetValue(partnerId, out var partner)) continue;
+
+                        var item = new PartnerServicePriceItem
+                        {
+                            LoaiDichVuId = SafeGetInt(readerPrice, "LoaiDichVuId"),
+                            MaLoai = SafeGetString(readerPrice, "MaLoai"),
+                            TenLoai = SafeGetString(readerPrice, "TenLoai"),
+                            DonGiaBanKg = SafeGetDecimal(readerPrice, "DonGiaBanKg"),
+                            DonGiaVonKg = SafeGetDecimal(readerPrice, "DonGiaVonKg")
+                        };
+                        partner.ServicePrices.Add(item);
+
+                        if (item.MaLoai == "GIAT_SAY" || item.TenLoai.Contains("sấy", StringComparison.OrdinalIgnoreCase))
+                            partner.GiaVonGiatSay = item.DonGiaVonKg;
+                        else if (item.MaLoai == "GIAT_HAP" || item.TenLoai.Contains("hấp", StringComparison.OrdinalIgnoreCase))
+                            partner.GiaVonGiatHap = item.DonGiaVonKg;
+                        else if (item.MaLoai == "UI_PHANG" || item.TenLoai.Contains("ủi", StringComparison.OrdinalIgnoreCase))
+                            partner.GiaVonUiPhang = item.DonGiaVonKg;
+                    }
+                }
+
+                foreach (var p in list) p.NotifyPriceSummaryChanged();
             }
             catch (Exception ex)
             {
@@ -1377,7 +1538,62 @@ namespace QuanLyDichVuKhachSan.Services
         }
 
         /// <summary>
-        /// Lưu hoặc cập nhật bảng giá vốn của đối tác xuống BangGiaDoiTacGiatUi
+        /// Đồng bộ danh sách dịch vụ & giá vốn mà đối tác cung cấp xuống BangGiaDoiTacGiatUi
+        /// </summary>
+        public async Task<(bool Success, string? ErrorMessage)> SavePartnerServicePricesAsync(int partnerId, IEnumerable<PartnerServicePriceItem> servicePrices)
+        {
+            try
+            {
+                using var conn = new SqlConnection(ConnectionString);
+                await conn.OpenAsync();
+                using var tx = conn.BeginTransaction();
+                try
+                {
+                    var items = servicePrices?.ToList() ?? new List<PartnerServicePriceItem>();
+
+                    // Xóa những dịch vụ không còn trong danh sách báo giá của đối tác
+                    using (var delCmd = new SqlCommand("DELETE FROM BangGiaDoiTacGiatUi WHERE DoiTacId = @DoiTacId", conn, tx))
+                    {
+                        delCmd.Parameters.AddWithValue("@DoiTacId", partnerId);
+                        await delCmd.ExecuteNonQueryAsync();
+                    }
+
+                    // Thêm lại từng dịch vụ mà đối tác có nhận làm kèm giá vốn
+                    foreach (var item in items)
+                    {
+                        using var insCmd = new SqlCommand(
+                            "INSERT INTO BangGiaDoiTacGiatUi (DoiTacId, LoaiDichVuId, DonGiaVonKg, GhiChu) VALUES (@DoiTacId, @LoaiId, @DonGiaVon, @GhiChu)",
+                            conn, tx);
+                        insCmd.Parameters.AddWithValue("@DoiTacId", partnerId);
+                        insCmd.Parameters.AddWithValue("@LoaiId", item.LoaiDichVuId);
+                        insCmd.Parameters.AddWithValue("@DonGiaVon", item.DonGiaVonKg);
+                        insCmd.Parameters.AddWithValue("@GhiChu", $"Giá vốn {item.TenLoai}");
+                        await insCmd.ExecuteNonQueryAsync();
+                    }
+
+                    tx.Commit();
+                    return (true, null);
+                }
+                catch
+                {
+                    tx.Rollback();
+                    throw;
+                }
+            }
+            catch (SqlException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SQL Error] SavePartnerServicePricesAsync: {ex.Message}");
+                return (false, ex.Message);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Error] SavePartnerServicePricesAsync: {ex.Message}");
+                return (false, ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Lưu hoặc cập nhật bảng giá vốn của đối tác xuống BangGiaDoiTacGiatUi (tương thích ngược)
         /// </summary>
         public async System.Threading.Tasks.Task SavePartnerCostPricesAsync(int partnerId, decimal say, decimal hap, decimal ui)
         {
@@ -2173,9 +2389,11 @@ namespace QuanLyDichVuKhachSan.Services
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
                 string query = @"
-                    SELECT gu.*, dt.TenDoiTac, nv.HoTen AS TenNguoiTao, nvTT.HoTen AS TenNguoiThanhToan 
+                    SELECT gu.*, dt.TenDoiTac, ldv.Id AS ServiceTypeId,
+                           nv.HoTen AS TenNguoiTao, nvTT.HoTen AS TenNguoiThanhToan 
                     FROM DonGiatUi gu 
                     LEFT JOIN DoiTacGiatUi dt ON gu.DoiTacId = dt.Id 
+                    LEFT JOIN LoaiDichVuGiatUi ldv ON (ldv.TenLoai = gu.LoaiDichVu OR ldv.MaLoai = gu.LoaiDichVu)
                     LEFT JOIN NhanVien nv ON gu.NguoiTaoId = nv.Id 
                     LEFT JOIN NhanVien nvTT ON gu.NguoiThanhToanId = nvTT.Id 
                     ORDER BY gu.NgayNhan DESC";
@@ -2191,10 +2409,11 @@ namespace QuanLyDichVuKhachSan.Services
                         if (p != null) partnerName = p.Name;
                     }
 
+                    int serviceTypeId = SafeGetInt(reader, "ServiceTypeId");
                     string serviceStr = SafeGetString(reader, "LoaiDichVu");
                     LaundryServiceType serviceType = LaundryServiceType.WashAndDry;
-                    if (serviceStr.Contains("hấp")) serviceType = LaundryServiceType.DryCleaning;
-                    else if (serviceStr.Contains("Ủi") || serviceStr.Contains("ủi")) serviceType = LaundryServiceType.Ironing;
+                    if (serviceStr.Contains("hấp", StringComparison.OrdinalIgnoreCase)) serviceType = LaundryServiceType.DryCleaning;
+                    else if (serviceStr.Contains("ủi", StringComparison.OrdinalIgnoreCase)) serviceType = LaundryServiceType.Ironing;
 
                     string statusStr = SafeGetString(reader, "TrangThai");
                     LaundryStatus status = LaundryStatus.PendingDispatch;
@@ -2225,6 +2444,8 @@ namespace QuanLyDichVuKhachSan.Services
                         RoomNumber = SafeGetString(reader, "SoPhong"),
                         PartnerId = partnerId,
                         PartnerName = partnerName,
+                        ServiceTypeId = serviceTypeId,
+                        ServiceTypeName = serviceStr,
                         ServiceType = serviceType,
                         WeightKg = SafeGetDecimal(reader, "KhoiLuongKg"),
                         UnitPricePerKg = SafeGetDecimal(reader, "DonGiaKg"),

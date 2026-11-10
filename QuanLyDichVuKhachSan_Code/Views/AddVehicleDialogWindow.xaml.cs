@@ -20,32 +20,25 @@ namespace QuanLyDichVuKhachSan.Views
         {
             int nextIndex = DataService.Instance.Vehicles.Count + 1;
             string autoCode = $"XE{nextIndex:D3}";
-            string suggestedPlate = $"59-F2 999.{nextIndex:D2}";
-            while (DataService.Instance.Vehicles.Any(x => x.LicensePlate == suggestedPlate))
+            while (DataService.Instance.Vehicles.Any(x => x.Id == nextIndex))
             {
                 nextIndex++;
                 autoCode = $"XE{nextIndex:D3}";
-                suggestedPlate = $"59-F2 999.{nextIndex:D2}";
             }
 
             TxtCode.Text = autoCode;
-            TxtLicensePlate.Text = suggestedPlate;
-            TxtName.Text = "Honda AirBlade 160 2024";
+            TxtLicensePlate.Text = "";
+            TxtName.Text = "";
             CboType.SelectedIndex = 0;
-            TxtDailyRate.Text = "180,000";
-            TxtRequiredDeposit.Text = "54,000";
+            TxtDailyRate.Text = "";
+            TxtRequiredDeposit.Text = "";
             CboStatus.SelectedIndex = 0;
             TxtConditionNote.Text = "";
         }
 
         private void TxtDailyRate_TextChanged(object sender, TextChangedEventArgs e)
         {
-            string rateStr = TxtDailyRate.Text.Replace(",", "").Replace(".", "").Trim();
-            if (decimal.TryParse(rateStr, out var rate) && rate > 0)
-            {
-                decimal deposit = Math.Round(rate * 0.3m / 1000m) * 1000m;
-                TxtRequiredDeposit.Text = deposit.ToString("N0");
-            }
+            // Giữ ô Tiền Cọc trống để người dùng chủ động nhập nếu cần
         }
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
@@ -60,7 +53,7 @@ namespace QuanLyDichVuKhachSan.Views
 
             if (string.IsNullOrWhiteSpace(plate) || string.IsNullOrWhiteSpace(name))
             {
-                MessageBox.Show("Vui lòng nhập đầy đủ biển số xe và tên xe!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Vui lòng nhập đầy đủ Biển số xe và Tên xe!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -70,17 +63,22 @@ namespace QuanLyDichVuKhachSan.Views
                 return;
             }
 
-            string rateStr = TxtDailyRate.Text.Trim();
-            if (!decimal.TryParse(rateStr, out var rate) || rate <= 0)
+            string rateStr = TxtDailyRate.Text.Replace(",", "").Replace(".", "").Trim();
+            if (!decimal.TryParse(rateStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var rate) || rate <= 0)
             {
                 MessageBox.Show("Giá thuê theo ngày phải lớn hơn 0!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            string depositStr = TxtRequiredDeposit.Text.Trim();
-            if (!decimal.TryParse(depositStr, out var deposit) || deposit < 0)
+            decimal deposit = 0m;
+            string depositStr = TxtRequiredDeposit.Text.Replace(",", "").Replace(".", "").Trim();
+            if (!string.IsNullOrWhiteSpace(depositStr))
             {
-                deposit = Math.Round(rate * 0.3m / 1000m) * 1000m;
+                if (!decimal.TryParse(depositStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out deposit) || deposit < 0)
+                {
+                    MessageBox.Show("Tiền cọc quy định không hợp lệ!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
             }
 
             VehicleType vType = VehicleType.Scooter;

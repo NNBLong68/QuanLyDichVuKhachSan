@@ -156,7 +156,7 @@
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="Lương Cơ Bản:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,2"/>
-                                <TextBox Text="{Binding NewStaffSalary, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="30"/>
+                                <TextBox Text="{Binding NewStaffSalaryInput, UpdateSourceTrigger=PropertyChanged}" helpers:InputHelper.ValidationMode="DecimalOnly" Style="{StaticResource ModernTextBox}" Height="30"/>
                             </StackPanel>
                         </Grid>
 

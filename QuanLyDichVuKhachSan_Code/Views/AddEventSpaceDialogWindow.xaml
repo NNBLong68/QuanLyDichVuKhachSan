@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:models="clr-namespace:QuanLyDichVuKhachSan.Models"
+        xmlns:helpers="clr-namespace:QuanLyDichVuKhachSan.Helpers"
         mc:Ignorable="d"
         Title="Thêm Khu Vực Sự Kiện Mới - Dalat Hotel" 
         Width="560" SizeToContent="Height" MinHeight="550"
@@ -60,12 +61,12 @@
                     </StackPanel>
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="Sức Chứa (Người):" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                        <TextBox x:Name="TxtCapacity" Style="{StaticResource ModernTextBox}" Height="36" FontWeight="Bold" Text="50"/>
+                        <TextBox x:Name="TxtCapacity" helpers:InputHelper.ValidationMode="PhoneOnly" Style="{StaticResource ModernTextBox}" Height="36" FontWeight="Bold"/>
                     </StackPanel>
                 </Grid>
 
                 <TextBlock Text="Giá Thuê Theo Giờ (VNĐ/giờ):" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                <TextBox x:Name="TxtHourlyRate" Style="{StaticResource ModernTextBox}" Height="36" FontWeight="Bold" Foreground="#D97706" Text="500,000" Margin="0,0,0,10"/>
+                <TextBox x:Name="TxtHourlyRate" helpers:InputHelper.ValidationMode="DecimalOnly" Style="{StaticResource ModernTextBox}" Height="36" FontWeight="Bold" Foreground="#D97706" Margin="0,0,0,10"/>
 
                 <TextBlock Text="Trạng Thái Hoạt Động:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
                 <ComboBox x:Name="CboStatus" Height="36" Margin="0,0,0,10">
@@ -75,7 +76,7 @@
                 </ComboBox>
 
                 <TextBlock Text="Mô Tả Trang Thiết Bị / Ghi Chú:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                <TextBox x:Name="TxtEquipments" Style="{StaticResource ModernTextBox}" Height="36" Margin="0,0,0,18" Text="Màn chiếu, âm thanh cơ bản, ánh sáng tiêu chuẩn"/>
+                <TextBox x:Name="TxtEquipments" Style="{StaticResource ModernTextBox}" Height="36" Margin="0,0,0,18"/>
 
                 <!-- Nút bấm Hủy (Reset form) và Xác nhận (Thêm mới) -->
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
