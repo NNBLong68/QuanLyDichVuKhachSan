@@ -41,37 +41,53 @@
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Text="🚗 DANH SÁCH XE TRONG BÃI &amp; LỊCH SỬ GỬI XE" FontSize="15" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,12"/>
                     
-                    <!-- Thanh tìm kiếm Real-time -->
+                    <!-- Thanh tìm kiếm Real-time & Bộ lọc trạng thái xe -->
                     <Grid Grid.Row="1" Margin="0,0,0,8">
-                        <TextBox x:Name="TxtSearchParking"
-                                 Text="{Binding SearchParkingQuery, UpdateSourceTrigger=PropertyChanged}"
-                                 Height="32"
-                                 Padding="28,0,10,0"
-                                 VerticalContentAlignment="Center"
-                                 FontSize="12"
-                                 Style="{StaticResource ModernTextBox}"/>
-                        <TextBlock Text="🔍" FontSize="12" Foreground="#94A3B8" 
-                                   VerticalAlignment="Center" HorizontalAlignment="Left" 
-                                   Margin="8,0,0,0" IsHitTestVisible="False"/>
-                        <TextBlock Text="Tìm kiếm khách hàng theo tên/số điện thoại" 
-                                   FontSize="12" Foreground="#94A3B8" FontStyle="Italic"
-                                   VerticalAlignment="Center" Margin="28,0,0,0"
-                                   IsHitTestVisible="False">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                    <Style.Triggers>
-                                        <MultiDataTrigger>
-                                            <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding Text, ElementName=TxtSearchParking}" Value=""/>
-                                                <Condition Binding="{Binding IsKeyboardFocused, ElementName=TxtSearchParking}" Value="False"/>
-                                            </MultiDataTrigger.Conditions>
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                        </MultiDataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid Grid.Column="0">
+                            <TextBox x:Name="TxtSearchParking"
+                                     Text="{Binding SearchParkingQuery, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="32"
+                                     Padding="28,0,10,0"
+                                     VerticalContentAlignment="Center"
+                                     FontSize="12"
+                                     Style="{StaticResource ModernTextBox}"/>
+                            <TextBlock Text="🔍" FontSize="12" Foreground="#94A3B8" 
+                                       VerticalAlignment="Center" HorizontalAlignment="Left" 
+                                       Margin="8,0,0,0" IsHitTestVisible="False"/>
+                            <TextBlock Text="Tìm kiếm khách hàng theo tên/số điện thoại" 
+                                       FontSize="12" Foreground="#94A3B8" FontStyle="Italic"
+                                       VerticalAlignment="Center" Margin="28,0,0,0"
+                                       IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding Text, ElementName=TxtSearchParking}" Value=""/>
+                                                    <Condition Binding="{Binding IsKeyboardFocused, ElementName=TxtSearchParking}" Value="False"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                        <ComboBox Grid.Column="1"
+                                  SelectedValue="{Binding SelectedStatusFilter, UpdateSourceTrigger=PropertyChanged}"
+                                  SelectedValuePath="Content"
+                                  Height="32" Width="140" Margin="8,0,0,0"
+                                  Style="{StaticResource ModernComboBox}"
+                                  FontSize="11.5">
+                            <ComboBoxItem Content="Xe trong bãi" IsSelected="True"/>
+                            <ComboBoxItem Content="Tất cả lịch sử"/>
+                            <ComboBoxItem Content="Đã ra bãi"/>
+                        </ComboBox>
                     </Grid>
 
                     <DataGrid Grid.Row="2" helpers:TabProgressiveRender.IsDataRegion="True" ItemsSource="{Binding FilteredParkingRecords}" SelectedItem="{Binding SelectedRecord}" AutoGenerateColumns="False" IsReadOnly="True">

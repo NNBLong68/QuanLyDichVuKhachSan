@@ -370,6 +370,10 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     if (!PayAndExportBill(true))
                         return;
 
+                    // Tự động xuất bến xe trong bãi của khách phòng này
+                    Data.AutoCheckOutParkingVehiclesForRoom(room.RoomNumber);
+                    room.ParkedVehicleInfo = "";
+
                     // Thanh toán thành công -> trả phòng và chuyển sang dọn dẹp
                     room.Status = RoomStatus.Cleaning;
                     room.CustomerName = "";

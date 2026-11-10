@@ -31,11 +31,34 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
         }
 
+        private string _selectedStatusFilter = "Xe trong bãi";
+        public string SelectedStatusFilter
+        {
+            get => _selectedStatusFilter;
+            set
+            {
+                if (SetProperty(ref _selectedStatusFilter, value))
+                {
+                    ApplyParkingFilter();
+                }
+            }
+        }
+
         public ObservableRangeCollection<ParkingRecord> FilteredParkingRecords { get; } = new();
 
         public void ApplyParkingFilter()
         {
             var list = Data.ParkingRecords.AsEnumerable();
+
+            if (SelectedStatusFilter == "Xe trong bãi")
+            {
+                list = list.Where(p => p.CheckOutTime == null);
+            }
+            else if (SelectedStatusFilter == "Đã ra bãi")
+            {
+                list = list.Where(p => p.CheckOutTime != null);
+            }
+
             if (!string.IsNullOrWhiteSpace(SearchParkingQuery))
             {
                 string rawQ = SearchParkingQuery.Trim();
@@ -204,6 +227,17 @@ namespace QuanLyDichVuKhachSan.ViewModels
             AutoSetFee();
             ApplyParkingFilter();
             Data.ParkingRecords.CollectionChanged += (s, e) => ApplyParkingFilter();
+            Data.ParkingRecordsChanged += () =>
+            {
+                if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+                {
+                    System.Windows.Application.Current.Dispatcher.Invoke(ApplyParkingFilter);
+                }
+                else
+                {
+                    ApplyParkingFilter();
+                }
+            };
         }
 
         private void AutoSetFee()

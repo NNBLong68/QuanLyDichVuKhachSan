@@ -52,6 +52,7 @@ namespace QuanLyDichVuKhachSan.Services
 
         // Dịch vụ Bãi đỗ xe
         public ObservableCollection<ParkingRecord> ParkingRecords { get; } = new();
+        public event Action? ParkingRecordsChanged;
 
         // Dịch vụ Giặt ủi ngoài
         public ObservableCollection<LaundryPartner> LaundryPartners { get; } = new();
@@ -2062,6 +2063,43 @@ namespace QuanLyDichVuKhachSan.Services
             }
 
             return (true, unpaidList, roomCost, servicesCost, grandTotal);
+        }
+
+        /// <summary>
+        /// Tự động xuất bến xe trong bãi của phòng khi khách làm thủ tục trả phòng (Check-out)
+        /// </summary>
+        public void AutoCheckOutParkingVehiclesForRoom(string roomNumber)
+        {
+            string norm = NormalizeRoomNumber(roomNumber);
+            if (string.IsNullOrEmpty(norm)) return;
+
+            int staffId = GetCurrentDutyStaffId();
+            string staffName = GetCurrentDutyStaffName();
+            var now = DateTime.Now;
+
+            var parkedVehicles = ParkingRecords.Where(p =>
+                NormalizeRoomNumber(p.RoomNumber) == norm &&
+                p.CheckOutTime == null).ToList();
+
+            foreach (var v in parkedVehicles)
+            {
+                v.CheckOutTime = now;
+                v.DaThanhToan = true;
+                v.IsPaid = true;
+                v.NguoiThanhToanId = staffId;
+                v.PaidByStaffName = staffName;
+                v.ThoiGianThanhToan = now;
+            }
+
+            _ = DatabaseService.Instance.ExecuteNonQueryAsync(
+                "UPDATE BaiDoXe SET ThoiGianRa = GETDATE(), DaThanhToan = 1, NguoiThanhToanId = @StaffId, ThoiGianThanhToan = GETDATE() " +
+                "WHERE (SoPhong = @Room OR SoPhong = @Norm) AND ThoiGianRa IS NULL",
+                new Microsoft.Data.SqlClient.SqlParameter("@StaffId", staffId),
+                new Microsoft.Data.SqlClient.SqlParameter("@Room", roomNumber),
+                new Microsoft.Data.SqlClient.SqlParameter("@Norm", norm)
+            );
+
+            ParkingRecordsChanged?.Invoke();
         }
 
         /// <summary>
