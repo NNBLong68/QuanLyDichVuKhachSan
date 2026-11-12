@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using Microsoft.Win32;
 using QuanLyDichVuKhachSan.Helpers;
 using QuanLyDichVuKhachSan.Models;
 using QuanLyDichVuKhachSan.Services;
@@ -17,7 +20,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
         public bool IsAdmin => Auth.IsAdmin;
 
-        // Quản lý Tab điều hướng: "Warehouse", "LowStock", "NearExpiry", "Receipt", "History"
+        // Quản lý Tab điều hướng: "Warehouse", "LowStock", "NearExpiry", "History"
         private string _activeTab = "Warehouse";
         public string ActiveTab
         {
@@ -26,13 +29,11 @@ namespace QuanLyDichVuKhachSan.ViewModels
             {
                 if (SetProperty(ref _activeTab, value))
                 {
-                    OnPropertyChanged(nameof(IsReceiptTabActive));
                     OnPropertyChanged(nameof(IsHistoryTabActive));
                 }
             }
         }
 
-        public bool IsReceiptTabActive => ActiveTab == "Receipt";
         public bool IsHistoryTabActive => ActiveTab == "History";
 
         // =======================================================================
@@ -115,215 +116,88 @@ namespace QuanLyDichVuKhachSan.ViewModels
         }
 
         // =======================================================================
-        // B. LẬP PHIẾU NHẬP KHO (MULTI-ITEM RECEIPT)
+        // B. LỊCH SỬ NHẬP KHO (CẤP PHIẾU) & NHẬP KHO BẰNG EXCEL
         // =======================================================================
-        private string _receiptCode = "";
-        public string ReceiptCode
+        public ObservableRangeCollection<InventoryReceipt> ReceiptHistory { get; } = new();
+        public ObservableRangeCollection<InventoryReceipt> FilteredReceiptHistory { get; } = new();
+
+        private string _historySearchText = "";
+        public string HistorySearchText
         {
-            get => _receiptCode;
-            set => SetProperty(ref _receiptCode, value);
+            get => _historySearchText;
+            set
+            {
+                if (SetProperty(ref _historySearchText, value))
+                {
+                    Debounce("HistorySearch", ApplyHistoryFilter, 180);
+                }
+            }
         }
 
-        public string GenerateUniqueReceiptCode()
+        private bool _isLoadingHistory;
+        public bool IsLoadingHistory
+        {
+            get => _isLoadingHistory;
+            set => SetProperty(ref _isLoadingHistory, value);
+        }
+
+        public int ReceiptHistoryCount => ReceiptHistory.Count;
+        public bool HasReceiptHistory => ReceiptHistory.Count > 0;
+
+        private string GenerateUniqueReceiptCode()
         {
             string datePrefix = $"PN-{DateTime.Now:yyyyMMdd}-";
             int maxIndex = 0;
-            foreach (var b in Data.InventoryBatches)
+
+            foreach (var code in ReceiptHistory.Select(x => x.ReceiptCode)
+                         .Concat(Data.InventoryBatches.Select(x => x.ReceiptCode)))
             {
-                if (!string.IsNullOrWhiteSpace(b.ReceiptCode) && b.ReceiptCode.StartsWith(datePrefix))
-                {
-                    string suffix = b.ReceiptCode.Substring(datePrefix.Length);
-                    if (int.TryParse(suffix, out int idx))
-                    {
-                        if (idx > maxIndex) maxIndex = idx;
-                    }
-                }
+                if (string.IsNullOrWhiteSpace(code) || !code.StartsWith(datePrefix, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string suffix = code[datePrefix.Length..];
+                if (int.TryParse(suffix, out int idx) && idx > maxIndex)
+                    maxIndex = idx;
             }
+
             return $"{datePrefix}{maxIndex + 1:D2}";
         }
 
-        private Supplier? _selectedSupplier;
-        public Supplier? SelectedSupplier
+        public void ApplyHistoryFilter()
         {
-            get => _selectedSupplier;
-            set => SetProperty(ref _selectedSupplier, value);
-        }
-
-        private string _receiptNote = "";
-        public string ReceiptNote
-        {
-            get => _receiptNote;
-            set => SetProperty(ref _receiptNote, value);
-        }
-
-        // Dòng hàng đang soạn
-        private FoodItem? _selectedItemToImport;
-        public FoodItem? SelectedItemToImport
-        {
-            get => _selectedItemToImport;
-            set
+            if (string.IsNullOrWhiteSpace(HistorySearchText))
             {
-                if (SetProperty(ref _selectedItemToImport, value))
-                {
-                    AutoFillItemReference(value);
-                    OnPropertyChanged(nameof(ReferenceSpecAndPrice));
-                }
+                FilteredReceiptHistory.ReplaceRange(ReceiptHistory.ToList());
+                return;
+            }
+
+            var result = ReceiptHistory.Where(x =>
+                TextSearchHelper.Match(x.ReceiptCode, HistorySearchText) ||
+                TextSearchHelper.Match(x.Supplier, HistorySearchText) ||
+                TextSearchHelper.Match(x.Note, HistorySearchText) ||
+                TextSearchHelper.Match(x.ImportedBy, HistorySearchText)).ToList();
+
+            FilteredReceiptHistory.ReplaceRange(result);
+        }
+
+        public async Task LoadReceiptHistoryAsync()
+        {
+            if (IsLoadingHistory) return;
+            IsLoadingHistory = true;
+
+            try
+            {
+                var receipts = await DatabaseService.Instance.LoadInventoryReceiptsFromDbAsync();
+                ReceiptHistory.ReplaceRange(receipts);
+                ApplyHistoryFilter();
+                OnPropertyChanged(nameof(ReceiptHistoryCount));
+                OnPropertyChanged(nameof(HasReceiptHistory));
+            }
+            finally
+            {
+                IsLoadingHistory = false;
             }
         }
-
-        public string ReferenceSpecAndPrice
-        {
-            get
-            {
-                if (SelectedItemToImport == null) return "";
-                string n = SelectedItemToImport.Name.ToLowerInvariant();
-                if (n.Contains("vang") || n.Contains("rượu"))
-                    return "💡 Rượu Vang: Thùng 6 chai 750ml (~480k-540k/thùng, ~85k/chai). Bán lẻ: 100k-120k/chai";
-                if (n.Contains("dâu") || n.Contains("mứt"))
-                    return "💡 Mứt Dâu: Lốc 6 hũ (~225k-240k/lốc, ~37.5k/hũ). Bán lẻ: 50k-60k/hũ";
-                if (n.Contains("lay") || n.Contains("snack") || n.Contains("khoai tây"))
-                    return "💡 Snack Lay's: Thùng 40 gói (~350k-380k/thùng, ~9k/gói). Bán lẻ: 12k-15k/gói";
-                if (n.Contains("g7") || n.Contains("cà phê") || n.Contains("cafe"))
-                    return "💡 Cà Phê G7: Thùng 24 hộp (~1.100k-1.150k/thùng, ~46k/hộp). Bán lẻ: 55k-60k/hộp";
-                if (n.Contains("atiso") || n.Contains("trà"))
-                    return "💡 Trà Atiso: Thùng 50 hộp (~1.600k/thùng, ~32k/hộp). Bán lẻ: 40k-50k/hộp";
-                if (n.Contains("omachi") || n.Contains("mì"))
-                    return "💡 Mì Ly Omachi: Thùng 24 ly (~330k-350k/thùng, ~14k/ly). Bán lẻ: 17k-18k/ly";
-                if (n.Contains("coca") || n.Contains("nước ngọt"))
-                    return "💡 Coca Cola: Thùng 24 lon (~215k-225k/thùng, ~9k/lon). Bán lẻ: 12k/lon";
-                if (n.Contains("lavie") || n.Contains("nước khoáng") || n.Contains("suối"))
-                    return "💡 Nước Suối Lavie: Thùng 24 chai (~90k-95k/thùng, ~3.8k/chai). Bán lẻ: 6k-7k/chai";
-                return $"💡 ĐVT Nhập Mặc Định: {SelectedItemToImport.DefaultImportUnit}, Quy đổi: 1 {SelectedItemToImport.DefaultImportUnit} = {SelectedItemToImport.DefaultConversionRate} {SelectedItemToImport.RetailUnit}";
-            }
-        }
-
-        private void AutoFillItemReference(FoodItem? item)
-        {
-            if (item == null) return;
-            ImportUnit = !string.IsNullOrWhiteSpace(item.DefaultImportUnit) ? item.DefaultImportUnit : "Thùng";
-            ConversionRate = item.DefaultConversionRate > 0 ? item.DefaultConversionRate : 24;
-
-            string n = item.Name.ToLowerInvariant();
-            if (n.Contains("vang") || n.Contains("rượu")) { ImportPrice = 510000; }
-            else if (n.Contains("dâu") || n.Contains("mứt")) { ImportPrice = 225000; }
-            else if (n.Contains("lay") || n.Contains("snack") || n.Contains("khoai tây")) { ImportPrice = 360000; }
-            else if (n.Contains("g7") || n.Contains("cà phê") || n.Contains("cafe")) { ImportPrice = 1120000; }
-            else if (n.Contains("atiso") || n.Contains("trà")) { ImportPrice = 1600000; }
-            else if (n.Contains("omachi") || n.Contains("mì")) { ImportPrice = 340000; }
-            else if (n.Contains("coca") || n.Contains("nước ngọt")) { ImportPrice = 220000; }
-            else if (n.Contains("lavie") || n.Contains("nước khoáng") || n.Contains("suối")) { ImportPrice = 92000; }
-            else { ImportPrice = item.Price * ConversionRate * 0.7m; }
-            IsUnitConversionEditable = false;
-        }
-
-        private bool _isUnitConversionEditable = false;
-        public bool IsUnitConversionEditable
-        {
-            get => _isUnitConversionEditable;
-            set => SetProperty(ref _isUnitConversionEditable, value);
-        }
-
-        private string _importUnit = "Thùng";
-        public string ImportUnit
-        {
-            get => _importUnit;
-            set
-            {
-                if (SetProperty(ref _importUnit, value))
-                {
-                    OnPropertyChanged(nameof(TotalRetailUnitsDisplay));
-                    OnPropertyChanged(nameof(CostPerRetailUnitDisplay));
-                }
-            }
-        }
-
-        private int _conversionRate = 24;
-        public int ConversionRate
-        {
-            get => _conversionRate;
-            set
-            {
-                if (SetProperty(ref _conversionRate, Math.Max(1, value)))
-                {
-                    OnPropertyChanged(nameof(TotalRetailUnits));
-                    OnPropertyChanged(nameof(TotalRetailUnitsDisplay));
-                    OnPropertyChanged(nameof(CostPerRetailUnitDisplay));
-                }
-            }
-        }
-
-        private int _importQuantity = 5;
-        public int ImportQuantity
-        {
-            get => _importQuantity;
-            set
-            {
-                if (SetProperty(ref _importQuantity, Math.Max(1, value)))
-                {
-                    OnPropertyChanged(nameof(TotalRetailUnits));
-                    OnPropertyChanged(nameof(TotalRetailUnitsDisplay));
-                    OnPropertyChanged(nameof(TotalImportCost));
-                    OnPropertyChanged(nameof(TotalImportCostDisplay));
-                }
-            }
-        }
-
-        private decimal _importPrice = 240000;
-        public decimal ImportPrice
-        {
-            get => _importPrice;
-            set
-            {
-                if (SetProperty(ref _importPrice, Math.Max(0, value)))
-                {
-                    OnPropertyChanged(nameof(TotalImportCost));
-                    OnPropertyChanged(nameof(TotalImportCostDisplay));
-                    OnPropertyChanged(nameof(CostPerRetailUnitDisplay));
-                }
-            }
-        }
-
-        private string _batchNumber = $"LO-{DateTime.Now:MMdd}-A";
-        public string BatchNumber
-        {
-            get => _batchNumber;
-            set => SetProperty(ref _batchNumber, value);
-        }
-
-        private DateTime? _expiryDate = DateTime.Today.AddMonths(6);
-        public DateTime? ExpiryDate
-        {
-            get => _expiryDate;
-            set => SetProperty(ref _expiryDate, value);
-        }
-
-        private string _lineNote = "";
-        public string LineNote
-        {
-            get => _lineNote;
-            set => SetProperty(ref _lineNote, value);
-        }
-
-        public int TotalRetailUnits => ImportQuantity * ConversionRate;
-        public string TotalRetailUnitsDisplay => $"{ImportQuantity} {ImportUnit} x {ConversionRate} = {TotalRetailUnits} {SelectedItemToImport?.RetailUnit ?? "đơn vị lẻ"}";
-        public decimal TotalImportCost => ImportQuantity * ImportPrice;
-        public string TotalImportCostDisplay => $"{TotalImportCost:N0} đ";
-        public string CostPerRetailUnitDisplay
-        {
-            get
-            {
-                if (ConversionRate <= 0) return "0 đ/đơn vị";
-                decimal cost = ImportPrice / ConversionRate;
-                return $"{cost:N0} đ / {SelectedItemToImport?.RetailUnit ?? "đơn vị lẻ"}";
-            }
-        }
-
-        // Danh sách các dòng hàng đang lập trong phiếu nhập
-        public ObservableCollection<WarehouseReceiptDraftItem> DraftReceiptItems { get; } = new();
-
-        public int DraftItemsCount => DraftReceiptItems.Count;
-        public int DraftTotalRetailUnits => DraftReceiptItems.Sum(x => x.TotalRetailUnits);
-        public decimal DraftTotalCost => DraftReceiptItems.Sum(x => x.TotalCost);
 
         // =======================================================================
         // C. BÁO CÁO LỢI NHUẬN BÁN HÀNG KHO (PROFIT REPORT)
@@ -371,13 +245,12 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
         // Commands
         public ICommand SetTabCommand { get; }
-        public ICommand AddDraftItemCommand { get; }
-        public ICommand RemoveDraftItemCommand { get; }
-        public ICommand CommitReceiptCommand { get; }
+        public ICommand DownloadTemplateCommand { get; }
+        public ICommand ImportExcelCommand { get; }
+        public ICommand DownloadReceiptExcelCommand { get; }
         public ICommand AddNewFoodItemCommand { get; }
         public ICommand RefreshCommand { get; }
         public ICommand LoadReportCommand { get; }
-        public ICommand ToggleUnitConversionEditCommand { get; }
         public ICommand EditFoodItemCommand { get; }
         public ICommand TrashFoodItemCommand { get; }
         public ICommand RestoreFoodItemCommand { get; }
@@ -395,9 +268,11 @@ namespace QuanLyDichVuKhachSan.ViewModels
             {
                 if (p is string tab && _activeTab != tab)
                 {
-                    // 3 card điều hướng luôn lấy dữ liệu mới nhất trước khi hiển thị.
+                    // Các tab đều lấy dữ liệu mới nhất trước khi hiển thị.
                     if (tab == "Warehouse" || tab == "LowStock" || tab == "NearExpiry")
                         RefreshAll();
+                    else if (tab == "History")
+                        _ = LoadReceiptHistoryAsync();
 
                     if (RequestSubTabTransition != null)
                         RequestSubTabTransition.Invoke(tab);
@@ -405,13 +280,16 @@ namespace QuanLyDichVuKhachSan.ViewModels
                         ActiveTab = tab;
                 }
             });
-            AddDraftItemCommand = new RelayCommand(_ => AddDraftItem());
-            RemoveDraftItemCommand = new RelayCommand(RemoveDraftItem);
-            CommitReceiptCommand = new RelayCommand(_ => CommitReceipt());
+            DownloadTemplateCommand = new RelayCommand(_ => DownloadExcelTemplate());
+            ImportExcelCommand = new RelayCommand(_ => _ = ImportFromExcelAsync());
+            DownloadReceiptExcelCommand = new RelayCommand(p => _ = DownloadReceiptExcelAsync(p));
             AddNewFoodItemCommand = new RelayCommand(_ => AddNewFoodItem());
-            RefreshCommand = new RelayCommand(_ => RefreshAll());
+            RefreshCommand = new RelayCommand(_ =>
+            {
+                RefreshAll();
+                _ = LoadReceiptHistoryAsync();
+            });
             LoadReportCommand = new RelayCommand(_ => _ = LoadProfitReportAsync());
-            ToggleUnitConversionEditCommand = new RelayCommand(_ => IsUnitConversionEditable = !IsUnitConversionEditable);
             EditFoodItemCommand = new RelayCommand(p =>
             {
                 if (p is FoodItem item)
@@ -420,10 +298,6 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     if (dlg.ShowDialog() == true)
                     {
                         RefreshAll();
-                        if (SelectedItemToImport?.Id == item.Id)
-                        {
-                            AutoFillItemReference(item);
-                        }
                     }
                 }
             });
@@ -432,13 +306,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             PermanentDeleteFoodItemCommand = new RelayCommand(p => PermanentDeleteFoodItem(p));
 
             RefreshAll();
-            ReceiptCode = GenerateUniqueReceiptCode();
-
-            if (Data.Suppliers.Count > 0)
-            {
-                SelectedSupplier = Data.Suppliers.First();
-            }
-            SelectedItemToImport = Data.FoodItems.FirstOrDefault();
+            _ = LoadReceiptHistoryAsync();
         }
 
         private void TrashFoodItem(object? parameter)
@@ -560,6 +428,8 @@ namespace QuanLyDichVuKhachSan.ViewModels
             OnPropertyChanged(nameof(TotalStockValue));
             OnPropertyChanged(nameof(NearExpiryBatchesCount));
             OnPropertyChanged(nameof(LowStockItemsCount));
+            OnPropertyChanged(nameof(ReceiptHistoryCount));
+            OnPropertyChanged(nameof(HasReceiptHistory));
         }
 
         private void RefreshLowStockItems()
@@ -613,92 +483,124 @@ namespace QuanLyDichVuKhachSan.ViewModels
             FilteredCatalogItems.ReplaceRange(result);
         }
 
-        private void AddDraftItem()
+        private void DownloadExcelTemplate()
         {
-            if (SelectedItemToImport == null)
+            var dialog = new SaveFileDialog
             {
-                MessageBox.Show("Vui lòng chọn mặt hàng cần nhập!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            if (ImportQuantity <= 0 || ConversionRate <= 0)
-            {
-                MessageBox.Show("Số lượng nhập và hệ số quy đổi phải lớn hơn 0!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            if (ExpiryDate.HasValue && ExpiryDate.Value.Date <= DateTime.Today)
-            {
-                MessageBox.Show("Hạn sử dụng của lô hàng phải sau ngày hôm nay (từ ngày mai trở đi)!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var draftItem = new WarehouseReceiptDraftItem
-            {
-                FoodItemId = SelectedItemToImport.Id,
-                FoodItemName = SelectedItemToImport.Name,
-                RetailUnit = SelectedItemToImport.RetailUnit,
-                ImportUnit = ImportUnit.Trim(),
-                ConversionRate = ConversionRate,
-                Quantity = ImportQuantity,
-                ImportPrice = ImportPrice,
-                BatchNumber = string.IsNullOrWhiteSpace(BatchNumber) ? $"LO-{DateTime.Now:MMdd}-{(char)('A' + (DraftReceiptItems.Count % 26))}" : BatchNumber.Trim(),
-                ExpiryDate = ExpiryDate,
-                Note = LineNote.Trim()
+                Title = "Lưu file Excel mẫu nhập kho",
+                Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                FileName = $"MauNhapKho_{DateTime.Now:yyyyMMdd_HHmm}.xlsx",
+                DefaultExt = ".xlsx",
+                AddExtension = true
             };
 
-            DraftReceiptItems.Add(draftItem);
-            OnPropertyChanged(nameof(DraftItemsCount));
-            OnPropertyChanged(nameof(DraftTotalRetailUnits));
-            OnPropertyChanged(nameof(DraftTotalCost));
+            if (dialog.ShowDialog() != true) return;
 
-            // Chuẩn bị cho dòng hàng tiếp theo
-            BatchNumber = $"LO-{DateTime.Now:MMdd}-{(char)('A' + (DraftReceiptItems.Count % 26))}";
-            LineNote = "";
-        }
-
-        private void RemoveDraftItem(object? parameter)
-        {
-            if (parameter is WarehouseReceiptDraftItem item)
+            try
             {
-                DraftReceiptItems.Remove(item);
-                OnPropertyChanged(nameof(DraftItemsCount));
-                OnPropertyChanged(nameof(DraftTotalRetailUnits));
-                OnPropertyChanged(nameof(DraftTotalCost));
+                var foods = Data.FoodItems.ToList();
+                InventoryExcelService.CreateTemplate(dialog.FileName, foods);
+
+                MessageBox.Show(
+                    $"✅ Đã tạo file Excel mẫu nhập kho!\n\n" +
+                    $"• Đường dẫn: {dialog.FileName}\n" +
+                    $"• Danh mục hiện có: {foods.Count} mặt hàng\n\n" +
+                    $"Mở file, điền Nhà cung cấp + các dòng mặt hàng rồi dùng nút '📥 Nhập Kho Từ Excel' để nhập kho.",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Không thể tạo file Excel mẫu!\n\n{ex.Message}",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        private async void CommitReceipt()
+        private async Task ImportFromExcelAsync()
         {
-            if (SelectedSupplier == null)
+            var dialog = new OpenFileDialog
             {
-                MessageBox.Show("Vui lòng chọn Nhà Cung Cấp!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Title = "Chọn file Excel nhập kho",
+                Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            InventoryExcelImportResult importResult;
+            var foods = Data.FoodItems.ToList();
+
+            try
+            {
+                importResult = await Task.Run(() => InventoryExcelService.ReadImportFile(dialog.FileName, foods));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Không thể đọc file Excel!\n\n{ex.Message}\n\n" +
+                    "Vui lòng kiểm tra lại định dạng file (.xlsx) và cấu trúc theo file mẫu.",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            if (DraftReceiptItems.Count == 0)
+            if (importResult.Errors.Count > 0)
             {
-                MessageBox.Show("Phiếu nhập chưa có dòng hàng nào! Vui lòng bấm '+ Thêm Dòng Hàng Vào Phiếu' trước.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                string details = string.Join("\n", importResult.Errors.Take(12).Select(x => "• " + x));
+                if (importResult.Errors.Count > 12)
+                    details += $"\n… và {importResult.Errors.Count - 12} lỗi khác.";
+
+                MessageBox.Show(
+                    $"❌ FILE EXCEL CHƯA HỢP LỆ ({importResult.Errors.Count} lỗi):\n\n{details}\n\n" +
+                    "Toàn bộ file chưa được nhập kho. Vui lòng sửa hết lỗi rồi thử lại.",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            int staffId = Data.GetCurrentDutyStaffId();
-            if (staffId <= 0) staffId = 1;
+            var confirm = MessageBox.Show(
+                $"XÁC NHẬN NHẬP KHO TỪ EXCEL?\n\n" +
+                $"• Nhà cung cấp: {importResult.SupplierName}\n" +
+                $"• Số mặt hàng: {importResult.Lines.Count} dòng\n" +
+                $"• Tổng tiền nhập: {importResult.TotalCost:N0} đ\n" +
+                (string.IsNullOrWhiteSpace(importResult.ReceiptNote) ? "" : $"• Ghi chú: {importResult.ReceiptNote}\n") +
+                "\nPhiếu nhập sẽ được tạo ngay sau khi xác nhận.",
+                "Xác nhận nhập kho", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
-            string code = string.IsNullOrWhiteSpace(ReceiptCode) ? $"PN-{DateTime.Now:yyyyMMdd}-{Data.InventoryBatches.Count + 1:D2}" : ReceiptCode.Trim();
+            if (confirm != MessageBoxResult.Yes) return;
 
-            // Gọi Stored Procedure: sp_LapPhieuNhapKho
-            int receiptId = await DatabaseService.Instance.LapPhieuNhapKhoAsync(code, SelectedSupplier.Id, staffId, ReceiptNote, DraftReceiptItems.ToList());
-
-            if (receiptId > 0)
+            try
             {
-                // Thêm vào lịch sử hiển thị
-                foreach (var draft in DraftReceiptItems)
+                int staffId = Data.GetCurrentDutyStaffId();
+                if (staffId <= 0) staffId = 1;
+
+                var supplier = await DatabaseService.Instance.GetOrCreateSupplierAsync(importResult.SupplierName);
+                if (supplier.Id <= 0)
+                {
+                    MessageBox.Show("Không thể tạo hoặc tìm Nhà cung cấp trong CSDL!",
+                        "Thông báo", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                string receiptCode = GenerateUniqueReceiptCode();
+                var saveResult = await DatabaseService.Instance.LapPhieuNhapKhoAsync(
+                    receiptCode, supplier.Id, staffId, importResult.ReceiptNote, importResult.Lines);
+
+                if (!saveResult.Success)
+                {
+                    MessageBox.Show("Có lỗi xảy ra khi lưu phiếu nhập kho xuống cơ sở dữ liệu!",
+                        "Thông báo", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                string importedBy = Auth.CurrentUser?.FullName ?? "Admin";
+                DateTime importTime = DateTime.Now;
+                var newBatches = new List<InventoryBatch>();
+
+                foreach (var draft in importResult.Lines)
                 {
                     var batch = new InventoryBatch
                     {
-                        ReceiptId = receiptId,
-                        ReceiptCode = code,
+                        ReceiptId = saveResult.ReceiptId,
+                        ReceiptCode = saveResult.ReceiptCode,
                         FoodItemId = draft.FoodItemId,
                         FoodItemName = draft.FoodItemName,
                         RetailUnit = draft.RetailUnit,
@@ -708,57 +610,119 @@ namespace QuanLyDichVuKhachSan.ViewModels
                         ImportPrice = draft.ImportPrice,
                         BatchNumber = draft.BatchNumber,
                         ExpiryDate = draft.ExpiryDate,
-                        ImportDate = DateTime.Now,
-                        ImportedBy = Auth.CurrentUser?.FullName ?? "Admin",
-                        Supplier = SelectedSupplier.Name,
+                        ImportDate = importTime,
+                        ImportedBy = importedBy,
+                        Supplier = supplier.Name,
                         Note = draft.Note
                     };
-                    Data.InventoryBatches.Insert(0, batch);
+                    newBatches.Add(batch);
 
+                    // Cập nhật tồn kho & giá vốn bình quân trong bộ nhớ (CSDL đã cập nhật qua trigger).
                     var food = Data.FoodItems.FirstOrDefault(x => x.Id == draft.FoodItemId);
                     if (food != null)
                     {
-                        // Tính lại giá vốn bình quân gia quyền & tồn kho
-                        int tonCu = food.StockQuantity;
-                        decimal giaVonCu = food.AverageCostPrice;
-                        int soLeNhap = draft.TotalRetailUnits;
-                        decimal giaVonMoiLe = draft.CostPerRetailUnit;
+                        int oldStock = food.StockQuantity;
+                        decimal oldCost = food.AverageCostPrice;
+                        int retailUnits = draft.TotalRetailUnits;
+                        decimal newCostPerUnit = draft.CostPerRetailUnit;
 
-                        decimal tongTienCu = tonCu * giaVonCu;
-                        decimal tongTienMoi = soLeNhap * giaVonMoiLe;
-                        int tongTonMoi = tonCu + soLeNhap;
+                        decimal oldValue = oldStock * oldCost;
+                        decimal newValue = retailUnits * newCostPerUnit;
+                        int totalStock = oldStock + retailUnits;
 
-                        food.AverageCostPrice = tongTonMoi > 0 ? (tongTienCu + tongTienMoi) / tongTonMoi : giaVonMoiLe;
-                        food.StockQuantity = tongTonMoi;
+                        food.AverageCostPrice = totalStock > 0 ? (oldValue + newValue) / totalStock : newCostPerUnit;
+                        food.StockQuantity = totalStock;
                         food.Status = "Đang phục vụ";
                         food.NotifyStockChanged();
                     }
                 }
 
-                MessageBox.Show(
-                    $"✅ ĐÃ LẬP PHIẾU NHẬP KHO THÀNH CÔNG!\n\n" +
-                    $"• Mã phiếu: {code}\n" +
-                    $"• Nhà cung cấp: {SelectedSupplier.Name}\n" +
-                    $"• Tổng số mặt hàng: {DraftReceiptItems.Count} loại\n" +
-                    $"• Tổng tồn lẻ cộng thêm: +{DraftTotalRetailUnits} đơn vị\n" +
-                    $"• Tổng tiền hóa đơn: {DraftTotalCost:N0} đ",
-                    "Thông báo",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information
-                );
+                for (int i = newBatches.Count - 1; i >= 0; i--)
+                    Data.InventoryBatches.Insert(0, newBatches[i]);
 
-                DraftReceiptItems.Clear();
-                OnPropertyChanged(nameof(DraftItemsCount));
-                OnPropertyChanged(nameof(DraftTotalRetailUnits));
-                OnPropertyChanged(nameof(DraftTotalCost));
+                if (!Data.Suppliers.Any(x => x.Id == supplier.Id))
+                    Data.Suppliers.Add(supplier);
 
-                ReceiptCode = GenerateUniqueReceiptCode();
-                ReceiptNote = "";
+                // Sao lưu file Excel đã nhập vào thư mục của app và ghi đường dẫn vào CSDL.
+                try
+                {
+                    string relativePath = InventoryExcelService.CopyToArchive(dialog.FileName, saveResult.ReceiptCode);
+                    await DatabaseService.Instance.UpdateReceiptExcelPathAsync(saveResult.ReceiptId, relativePath);
+                }
+                catch (Exception archiveEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Archive Excel Error]: {archiveEx.Message}");
+                }
+
                 RefreshAll();
+                await LoadReceiptHistoryAsync();
+
+                MessageBox.Show(
+                    $"✅ ĐÃ NHẬP KHO THÀNH CÔNG!\n\n" +
+                    $"• Mã phiếu: {saveResult.ReceiptCode}\n" +
+                    $"• Nhà cung cấp: {supplier.Name}\n" +
+                    $"• Số mặt hàng: {importResult.Lines.Count} dòng\n" +
+                    $"• Tổng tiền nhập: {importResult.TotalCost:N0} đ\n\n" +
+                    "File Excel đã được lưu vào lịch sử nhập kho để tải lại khi cần.",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                if (_activeTab != "History")
+                    SetTabCommand.Execute("History");
             }
-            else
+            catch (Exception ex)
             {
-                MessageBox.Show("Có lỗi xảy ra khi lưu phiếu nhập kho xuống cơ sở dữ liệu!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Có lỗi xảy ra trong quá trình nhập kho!\n\n{ex.Message}",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async Task DownloadReceiptExcelAsync(object? parameter)
+        {
+            if (parameter is not InventoryReceipt receipt)
+                return;
+
+            var dialog = new SaveFileDialog
+            {
+                Title = "Tải file Excel phiếu nhập kho",
+                Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                FileName = $"PhieuNhap_{receipt.ReceiptCode}.xlsx",
+                DefaultExt = ".xlsx",
+                AddExtension = true
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            try
+            {
+                string archivePath = InventoryExcelService.GetAbsoluteArchivePath(receipt.FileExcelPath);
+
+                if (!string.IsNullOrWhiteSpace(archivePath) && File.Exists(archivePath))
+                {
+                    File.Copy(archivePath, dialog.FileName, true);
+                }
+                else
+                {
+                    var lines = Data.InventoryBatches.Where(x => x.ReceiptId == receipt.Id).ToList();
+                    if (lines.Count == 0)
+                    {
+                        MessageBox.Show(
+                            "Không tìm thấy dữ liệu chi tiết của phiếu nhập này để xuất lại file Excel!",
+                            "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    var foods = Data.FoodItems.ToList();
+                    await Task.Run(() => InventoryExcelService.ExportReceipt(dialog.FileName, receipt, lines, foods));
+                }
+
+                MessageBox.Show(
+                    $"✅ Đã tải file Excel phiếu nhập kho!\n\n• Đường dẫn: {dialog.FileName}",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Không thể tải file Excel phiếu nhập!\n\n{ex.Message}",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -796,7 +760,6 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 item.Id = newId;
                 Data.FoodItems.Add(item);
                 RefreshAll();
-                SelectedItemToImport = item;
 
                 MessageBox.Show(
                     $"✅ Đã thêm mặt hàng mới: [{item.ItemCode}] {item.Name}!\n" +
@@ -805,7 +768,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     $"• Giá bán lẻ: {item.Price:N0} đ\n" +
                     $"• ĐVT nhập mặc định: 1 {item.DefaultImportUnit} = {item.DefaultConversionRate} {item.RetailUnit}\n" +
                     $"• Trạng thái phục vụ: Còn hàng (Đang phục vụ)\n" +
-                    $"• Tồn kho khởi tạo = 0 (Để nhập hàng, hãy lập Phiếu Nhập Kho ở tab bên)",
+                    $"• Tồn kho khởi tạo = 0 (Để nhập hàng, hãy dùng '📥 Nhập Kho Từ Excel' ở thanh công cụ phía trên)",
                     "Thông báo",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information

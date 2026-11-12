@@ -321,6 +321,39 @@ namespace QuanLyDichVuKhachSan.Models
         }
     }
 
+    /// <summary>
+    /// Một phiếu nhập kho ở cấp header (dùng cho tab Lịch sử nhập kho).
+    /// </summary>
+    public class InventoryReceipt
+    {
+        public int Id { get; set; }
+        public string ReceiptCode { get; set; } = string.Empty;
+        public DateTime ImportDate { get; set; } = DateTime.Now;
+        public string Supplier { get; set; } = string.Empty;
+        public string ImportedBy { get; set; } = string.Empty;
+        public string Note { get; set; } = string.Empty;
+        public int TotalItems { get; set; }
+        public decimal TotalCost { get; set; }
+
+        /// <summary>Đường dẫn tương đối tới file Excel lưu trữ (VD: PhieuNhapKho\PN-20261112-01.xlsx).</summary>
+        public string FileExcelPath { get; set; } = string.Empty;
+
+        public string ImportDateDisplay => ImportDate.ToString("dd/MM/yyyy HH:mm");
+        public string TotalCostDisplay => $"{TotalCost:N0} đ";
+        public string TotalItemsDisplay => $"{TotalItems} dòng";
+        public string FileExcelDisplay => string.IsNullOrWhiteSpace(FileExcelPath) ? "Chưa có file" : "Có file Excel";
+    }
+
+    /// <summary>
+    /// Kết quả lưu phiếu nhập kho (mã phiếu cuối cùng có thể khác mã yêu cầu nếu bị trùng).
+    /// </summary>
+    public class ReceiptSaveResult
+    {
+        public int ReceiptId { get; set; }
+        public string ReceiptCode { get; set; } = string.Empty;
+        public bool Success => ReceiptId > 0;
+    }
+
     public class WarehouseReceiptDraftItem : INotifyPropertyChanged
     {
         public int FoodItemId { get; set; }

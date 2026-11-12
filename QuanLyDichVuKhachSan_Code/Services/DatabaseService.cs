@@ -847,10 +847,32 @@ namespace QuanLyDichVuKhachSan.Services
             return list;
         }
 
+        private static bool _phieuNhapKhoColumnsChecked = false;
+        private static readonly object _phieuNhapKhoColumnsLock = new();
+        private static void EnsurePhieuNhapKhoColumnsExist(SqlConnection conn)
+        {
+            if (_phieuNhapKhoColumnsChecked) return;
+
+            lock (_phieuNhapKhoColumnsLock)
+            {
+                if (_phieuNhapKhoColumnsChecked) return;
+                try
+                {
+                    string ddl = @"
+                        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PhieuNhapKho' AND COLUMN_NAME = 'DuongDanFileExcel')
+                            ALTER TABLE PhieuNhapKho ADD DuongDanFileExcel NVARCHAR(500) NULL;";
+                    using var cmd = new SqlCommand(ddl, conn);
+                    cmd.ExecuteNonQuery();
+                    _phieuNhapKhoColumnsChecked = true;
+                }
+                catch { }
+            }
+        }
+
         /// <summary>
         /// Lập phiếu nhập kho nhiều dòng hàng thông qua Stored Procedure: sp_LapPhieuNhapKho (TVP kieu_ChiTietNhapKho)
         /// </summary>
-        public async Task<int> LapPhieuNhapKhoAsync(string receiptCode, int supplierId, int staffId, string note, List<WarehouseReceiptDraftItem> items)
+        public async Task<ReceiptSaveResult> LapPhieuNhapKhoAsync(string receiptCode, int supplierId, int staffId, string note, List<WarehouseReceiptDraftItem> items)
         {
             return await Task.Run(() =>
             {
@@ -858,6 +880,7 @@ namespace QuanLyDichVuKhachSan.Services
                 {
                     using var conn = new SqlConnection(ConnectionString);
                     conn.Open();
+                    EnsurePhieuNhapKhoColumnsExist(conn);
 
                     // 1. Kiểm tra và đảm bảo MaPhieuNhap là DUY NHẤT
                     string finalCode = receiptCode;
@@ -946,7 +969,8 @@ namespace QuanLyDichVuKhachSan.Services
                         cmd.Parameters.Add(outParam);
 
                         cmd.ExecuteNonQuery();
-                        if (outParam.Value is int id && id > 0) return id;
+                        if (outParam.Value is int id && id > 0)
+                            return new ReceiptSaveResult { ReceiptId = id, ReceiptCode = finalCode };
                     }
                     catch (Exception spEx)
                     {
@@ -1009,19 +1033,19 @@ namespace QuanLyDichVuKhachSan.Services
                         }
 
                         tran.Commit();
-                        return newReceiptId;
+                        return new ReceiptSaveResult { ReceiptId = newReceiptId, ReceiptCode = finalCode };
                     }
                     catch (Exception tranEx)
                     {
                         tran.Rollback();
                         System.Diagnostics.Debug.WriteLine($"[Direct SQL Error]: {tranEx.Message}");
-                        return -1;
+                        return new ReceiptSaveResult();
                     }
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"[LapPhieuNhapKhoAsync Fatal Error]: {ex.Message}");
-                    return -1;
+                    return new ReceiptSaveResult();
                 }
             });
         }
@@ -1208,6 +1232,142 @@ namespace QuanLyDichVuKhachSan.Services
                 System.Diagnostics.Debug.WriteLine($"[SQL Error] LoadInventoryBatchesFromDb: {ex.Message}");
             }
             return list;
+        }
+
+        /// <summary>
+        /// Đọc danh sách phiếu nhập kho ở cấp header (dùng cho tab Lịch sử nhập kho).
+        /// </summary>
+        public async Task<List<InventoryReceipt>> LoadInventoryReceiptsFromDbAsync()
+        {
+            return await Task.Run(() =>
+            {
+                var list = new List<InventoryReceipt>();
+                try
+                {
+                    using var conn = new SqlConnection(ConnectionString);
+                    conn.Open();
+                    EnsurePhieuNhapKhoColumnsExist(conn);
+
+                    string query = @"
+                        SELECT 
+                            pn.Id,
+                            pn.MaPhieuNhap,
+                            pn.NgayNhap,
+                            ncc.TenNhaCungCap,
+                            ISNULL(nv.HoTen, N'') AS TenNguoiNhap,
+                            ISNULL(pn.GhiChu, N'') AS GhiChu,
+                            (SELECT COUNT(1) FROM ChiTietPhieuNhapKho ct WHERE ct.PhieuNhapId = pn.Id) AS SoDong,
+                            (SELECT ISNULL(SUM(ct.SoLuongNhap * ct.DonGiaNhap), 0) FROM ChiTietPhieuNhapKho ct WHERE ct.PhieuNhapId = pn.Id) AS TongTien,
+                            pn.DuongDanFileExcel
+                        FROM PhieuNhapKho pn
+                        JOIN NhaCungCap ncc ON ncc.Id = pn.NhaCungCapId
+                        LEFT JOIN NhanVien nv ON nv.Id = pn.NguoiNhapId
+                        ORDER BY pn.NgayNhap DESC, pn.Id DESC";
+
+                    using var cmd = new SqlCommand(query, conn);
+                    using var reader = cmd.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        list.Add(new InventoryReceipt
+                        {
+                            Id = SafeGetInt(reader, "Id"),
+                            ReceiptCode = SafeGetString(reader, "MaPhieuNhap"),
+                            ImportDate = SafeGetDateTime(reader, "NgayNhap"),
+                            Supplier = SafeGetString(reader, "TenNhaCungCap"),
+                            ImportedBy = SafeGetString(reader, "TenNguoiNhap"),
+                            Note = SafeGetString(reader, "GhiChu"),
+                            TotalItems = SafeGetInt(reader, "SoDong"),
+                            TotalCost = SafeGetDecimal(reader, "TongTien"),
+                            FileExcelPath = SafeGetString(reader, "DuongDanFileExcel")
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SQL Error] LoadInventoryReceiptsFromDbAsync: {ex.Message}");
+                }
+                return list;
+            });
+        }
+
+        /// <summary>
+        /// Lấy nhà cung cấp theo tên; nếu chưa tồn tại thì tự tạo mới.
+        /// </summary>
+        public async Task<Supplier> GetOrCreateSupplierAsync(string supplierName)
+        {
+            return await Task.Run(() =>
+            {
+                string name = (supplierName ?? string.Empty).Trim();
+                if (name.Length > 100) name = name[..100];
+
+                var supplier = new Supplier { Name = name };
+                if (string.IsNullOrWhiteSpace(name)) return supplier;
+
+                try
+                {
+                    using var conn = new SqlConnection(ConnectionString);
+                    conn.Open();
+
+                    using (var findCmd = new SqlCommand(
+                        "SELECT TOP 1 Id, TenNhaCungCap, NguoiLienHe, SoDienThoai, DiaChi, GhiChu, TrangThai " +
+                        "FROM NhaCungCap WHERE TenNhaCungCap = @Name", conn))
+                    {
+                        findCmd.Parameters.AddWithValue("@Name", name);
+                        using var reader = findCmd.ExecuteReader();
+                        if (reader.Read())
+                        {
+                            supplier.Id = SafeGetInt(reader, "Id");
+                            supplier.Name = SafeGetString(reader, "TenNhaCungCap");
+                            supplier.ContactPerson = SafeGetString(reader, "NguoiLienHe");
+                            supplier.PhoneNumber = SafeGetString(reader, "SoDienThoai");
+                            supplier.Address = SafeGetString(reader, "DiaChi");
+                            supplier.Note = SafeGetString(reader, "GhiChu");
+                            supplier.IsActive = SafeGetBool(reader, "TrangThai");
+                            return supplier;
+                        }
+                    }
+
+                    using var insertCmd = new SqlCommand(@"
+                        INSERT INTO NhaCungCap (TenNhaCungCap, SoDienThoai, TrangThai)
+                        VALUES (@Name, N'', 1);
+                        SELECT CAST(SCOPE_IDENTITY() AS INT);", conn);
+                    insertCmd.Parameters.AddWithValue("@Name", name);
+                    supplier.Id = Convert.ToInt32(insertCmd.ExecuteScalar() ?? 0);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SQL Error] GetOrCreateSupplierAsync: {ex.Message}");
+                }
+
+                return supplier;
+            });
+        }
+
+        /// <summary>
+        /// Cập nhật đường dẫn tương đối của file Excel lưu trữ cho phiếu nhập kho.
+        /// </summary>
+        public async Task<bool> UpdateReceiptExcelPathAsync(int receiptId, string relativePath)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    using var conn = new SqlConnection(ConnectionString);
+                    conn.Open();
+                    EnsurePhieuNhapKhoColumnsExist(conn);
+
+                    using var cmd = new SqlCommand(
+                        "UPDATE PhieuNhapKho SET DuongDanFileExcel = @Path WHERE Id = @Id", conn);
+                    cmd.Parameters.AddWithValue("@Path", string.IsNullOrWhiteSpace(relativePath) ? (object)DBNull.Value : relativePath);
+                    cmd.Parameters.AddWithValue("@Id", receiptId);
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SQL Error] UpdateReceiptExcelPathAsync: {ex.Message}");
+                    return false;
+                }
+            });
         }
 
         public bool UpdateFoodDefaultQuota(int foodId, int defaultQuota, bool applyToday = false)

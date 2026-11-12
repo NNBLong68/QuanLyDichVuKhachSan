@@ -243,7 +243,8 @@ CREATE TABLE PhieuNhapKho (
     NguoiNhapId     INT           NOT NULL FOREIGN KEY REFERENCES NhanVien(Id),
     NgayNhap        DATETIME      NOT NULL DEFAULT GETDATE(),
     TongTien        DECIMAL(18,2) NOT NULL DEFAULT 0 CHECK (TongTien >= 0),
-    GhiChu          NVARCHAR(255) NULL
+    GhiChu          NVARCHAR(255) NULL,
+    DuongDanFileExcel NVARCHAR(500) NULL
 );
 GO
 
