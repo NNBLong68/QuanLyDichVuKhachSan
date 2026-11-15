@@ -1,427 +1,423 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
-using QuanLyDichVuKhachSan.Models;
-using QuanLyDichVuKhachSan.Services;
-using QuanLyDichVuKhachSan.ViewModels;
 
-namespace QuanLyDichVuKhachSan.Views
+namespace QuanLyDichVuKhachSan
 {
     public partial class LaundryServiceView : UserControl
     {
+        private ObservableCollection<DonGiatUiHienThi> _dsGiatUi;
+
+        private readonly string[] _cacBuocTienDo =
+        {
+            "Đã tiếp nhận",
+            "Đang giặt",
+            "Đang sấy",
+            "Đang ủi",
+            "Hoàn thành",
+            "Đã giao khách"
+        };
+
         public LaundryServiceView()
         {
             InitializeComponent();
-            DataContextChanged += OnDataContextChanged;
+            TaiDuLieuGiatUi();
         }
 
-        private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        private void TaiDuLieuGiatUi()
         {
-            if (e.OldValue is LaundryViewModel oldVm)
+            if (_dsGiatUi == null)
             {
-                oldVm.RequestScrollOrderIntoView -= OnRequestScrollOrderIntoView;
-            }
-            if (e.NewValue is LaundryViewModel newVm)
-            {
-                newVm.RequestScrollOrderIntoView += OnRequestScrollOrderIntoView;
-            }
-        }
-
-        private void OnRequestScrollOrderIntoView(LaundryOrder order)
-        {
-            Dispatcher.InvokeAsync(() =>
-            {
-                if (GridLaundryOrders != null && order != null)
+                _dsGiatUi = new ObservableCollection<DonGiatUiHienThi>
                 {
-                    GridLaundryOrders.SelectedItems.Clear();
-                    GridLaundryOrders.SelectedItem = order;
-                    GridLaundryOrders.ScrollIntoView(order);
-                    GridLaundryOrders.Focus();
-                }
-            }, System.Windows.Threading.DispatcherPriority.Loaded);
-        }
-
-        private void BtnAddPartner_Click(object sender, RoutedEventArgs e)
-        {
-            var dlg = new AddLaundryPartnerDialogWindow();
-            dlg.ShowDialog();
-        }
-
-        private void ServiceTypeCombo_ContextMenuOpening(object sender, ContextMenuEventArgs e)
-        {
-            if (!AuthService.Instance.IsAdmin)
-            {
-                e.Handled = true; // Chỉ tài khoản Admin mới có quyền thêm loại hình dịch vụ giặt
-            }
-        }
-
-        private void MenuItem_AddServiceType_Click(object sender, RoutedEventArgs e)
-        {
-            if (!AuthService.Instance.IsAdmin)
-            {
-                MessageBox.Show("Chỉ tài khoản Admin mới có quyền thêm loại hình dịch vụ giặt mới!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var dlg = new AddLaundryServiceTypeDialogWindow();
-            if (dlg.ShowDialog() == true && dlg.CreatedServiceType != null)
-            {
-                if (DataContext is LaundryViewModel vm)
-                {
-                    vm.SelectedServiceTypeItem = dlg.CreatedServiceType;
-                }
-            }
-        }
-
-        private void TxtUnitPrice_GotFocus(object sender, RoutedEventArgs e)
-        {
-            if (AuthService.Instance.IsAdmin && DataContext is LaundryViewModel vm)
-            {
-                vm.BeginEditUnitPrice();
-                Dispatcher.InvokeAsync(() => TxtUnitPrice.SelectAll(), System.Windows.Threading.DispatcherPriority.Input);
-            }
-        }
-
-        private async void TxtUnitPrice_LostFocus(object sender, RoutedEventArgs e)
-        {
-            if (DataContext is LaundryViewModel vm)
-            {
-                await vm.CommitUnitPriceEditAsync();
-            }
-        }
-
-        private async void TxtUnitPrice_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-        {
-            if (e.Key == System.Windows.Input.Key.Enter && DataContext is LaundryViewModel vm)
-            {
-                await vm.CommitUnitPriceEditAsync();
-                System.Windows.Input.Keyboard.ClearFocus();
-                e.Handled = true;
-            }
-        }
-
-        private void PartnerBorder_ContextMenuOpening(object sender, ContextMenuEventArgs e)
-        {
-            if (!AuthService.Instance.IsAdmin)
-            {
-                e.Handled = true; // Chỉ tài khoản admin mới có menu chuột phải chỉnh sửa đối tác
-            }
-        }
-
-        private void MenuItem_EditPartner_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is MenuItem mi && mi.DataContext is LaundryPartner partner)
-            {
-                var dlg = new EditLaundryPartnerDialogWindow(partner);
-                dlg.ShowDialog();
-            }
-        }
-
-        private void PartnerCell_ContextMenuOpening(object sender, ContextMenuEventArgs e)
-        {
-            if (sender is FrameworkElement fe)
-            {
-                ShowBatchOrSingleDispatchContextMenu(fe, fe.DataContext as LaundryOrder);
-            }
-            e.Handled = true;
-        }
-
-        private void DataGridRow_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (sender is DataGridRow row)
-            {
-                // Nếu click chuột phải vào dòng CHƯA được chọn -> chọn riêng dòng đó
-                // Nếu dòng click chuột phải ĐÃ ĐƯỢC CHỌN (trong nhóm nhiều dòng đang chọn qua Ctrl/Shift/kéo chuột) -> GIỮ NGUYÊN để thao tác hàng loạt
-                if (!row.IsSelected)
-                {
-                    GridLaundryOrders.SelectedItems.Clear();
-                    row.IsSelected = true;
-                }
-                row.Focus();
-            }
-        }
-
-        private void DataGridRow_ContextMenuOpening(object sender, ContextMenuEventArgs e)
-        {
-            if (sender is DataGridRow row)
-            {
-                ShowBatchOrSingleDispatchContextMenu(row, row.DataContext as LaundryOrder);
-            }
-            e.Handled = true;
-        }
-
-        /// <summary>
-        /// Menu chuột phải thông minh hỗ trợ:
-        /// 1. BÀN GIAO HÀNG LOẠT: Khi người dùng giữ Ctrl hoặc kéo chuột chọn nhiều đơn chờ giao tiệm,
-        ///    chuột phải sẽ hiện danh sách tiệm để bàn giao toàn bộ các đơn đó cùng lúc.
-        /// 2. BÀN GIAO ĐƠN LẺ: Click chọn nhanh tiệm đối tác chỉ với 1 cú nhấp chuột.
-        /// </summary>
-        private void ShowBatchOrSingleDispatchContextMenu(FrameworkElement targetElement, LaundryOrder? clickedOrder)
-        {
-            var selectedOrders = GridLaundryOrders.SelectedItems
-                .OfType<LaundryOrder>()
-                .ToList();
-
-            if (!selectedOrders.Any() && clickedOrder != null)
-            {
-                selectedOrders.Add(clickedOrder);
-            }
-
-            var dispatchableOrders = selectedOrders.Where(o => o.CanDispatch).ToList();
-            var activePartners = DataService.Instance.LaundryPartners.Where(p => p.IsActive).ToList();
-
-            var contextMenu = new ContextMenu();
-
-            if (dispatchableOrders.Count > 1)
-            {
-                // ==================== BÀN GIAO HÀNG LOẠT (MULTI-SELECTION) ====================
-                var titleItem = new MenuItem
-                {
-                    Header = $"🚚 BÀN GIAO {dispatchableOrders.Count} ĐƠN CHO ĐỐI TÁC TIỆM GIẶT",
-                    FontWeight = FontWeights.Bold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(3, 105, 161)),
-                    IsEnabled = false
+                    new DonGiatUiHienThi("DH001", "Nguyễn Hằng (P.101)", "0234563 9806", "Giặt sấy thường (Theo kg)", "Đang giặt", "50.000"),
+                    new DonGiatUiHienThi("DH002", "Nguyễn Nganh (P.205)", "0234563 9809", "Giặt ủi cao cấp (Theo bộ)", "Đang sấy", "85.000"),
+                    new DonGiatUiHienThi("DH003", "Nguyễn Hằng (P.101)", "0234559 9809", "Giặt khô / Hấp Vest - Áo dài", "Đã tiếp nhận", "120.000"),
+                    new DonGiatUiHienThi("DH004", "Lê Minh Tâm (P.302)", "0234564 9808", "Giặt sấy thường (Theo kg)", "Đã tiếp nhận", "45.000"),
+                    new DonGiatUiHienThi("DH005", "Trần Minh Quân (P.201)", "0234554 9809", "Giặt ủi cao cấp (Theo bộ)", "Đang giặt", "85.000"),
+                    new DonGiatUiHienThi("DH006", "Lê Thu Thảo (P.402)", "0334558 9809", "Giặt chăn ga / Đồ vải khách sạn", "Hoàn thành", "150.000"),
+                    new DonGiatUiHienThi("DH007", "Phạm Hoàng Nam (P.104)", "09749 272037", "Giặt sấy thường (Theo kg)", "Đang ủi", "50.000"),
+                    new DonGiatUiHienThi("DH008", "Võ Gia Huy (P.305)", "09749 278038", "Giặt ủi cao cấp (Theo bộ)", "Đã giao khách", "95.000")
                 };
-                contextMenu.Items.Add(titleItem);
+            }
 
-                decimal totalWeight = dispatchableOrders.Sum(o => o.WeightKg);
-                decimal totalEstimated = dispatchableOrders.Sum(o => o.TotalPrice);
-                var subItem = new MenuItem
-                {
-                    Header = $"📦 Đã chọn: {dispatchableOrders.Count} đơn · Tổng trọng lượng: {totalWeight:0.#} kg · Tổng thu: {totalEstimated:N0} đ",
-                    FontSize = 11,
-                    Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
-                    IsEnabled = false
-                };
-                contextMenu.Items.Add(subItem);
-                contextMenu.Items.Add(new Separator());
+            CapNhatThongKeGiatUi(_dsGiatUi);
+            TaoMaDonTiepTheo();
+        }
 
-                if (!activePartners.Any())
+        private void CapNhatThongKeGiatUi(IEnumerable<DonGiatUiHienThi> danhSachHienThi)
+        {
+            if (dgDonGiatUi != null)
+                dgDonGiatUi.ItemsSource = danhSachHienThi.ToList();
+
+            if (_dsGiatUi == null) return;
+
+            if (txtTongDonGiatUi != null)
+                txtTongDonGiatUi.Text = $"{_dsGiatUi.Count:00} đơn";
+
+            if (txtDangXuLyGiatUi != null)
+            {
+                int dangXuLy = _dsGiatUi.Count(x => x.TrangThai == "Đang giặt" || x.TrangThai == "Đang sấy" || x.TrangThai == "Đang ủi");
+                txtDangXuLyGiatUi.Text = $"{dangXuLy:00} đơn";
+            }
+
+            if (txtChoGiaoGiatUi != null)
+            {
+                int choGiao = _dsGiatUi.Count(x => x.TrangThai == "Hoàn thành");
+                txtChoGiaoGiatUi.Text = $"{choGiao} đơn";
+            }
+        }
+
+        private void TaoMaDonTiepTheo()
+        {
+            if (txtMaDonGui != null && _dsGiatUi != null)
+            {
+                txtMaDonGui.Text = $"DH{_dsGiatUi.Count + 1:000}";
+            }
+        }
+
+        private void BtnCapNhatTienDo_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is DonGiatUiHienThi don)
+            {
+                int idx = Array.IndexOf(_cacBuocTienDo, don.TrangThai);
+                if (idx >= 0 && idx < _cacBuocTienDo.Length - 1)
                 {
-                    var noPartnerItem = new MenuItem
-                    {
-                        Header = "⚠️ Không có đối tác giặt ủi nào đang hoạt động!",
-                        IsEnabled = false
-                    };
-                    contextMenu.Items.Add(noPartnerItem);
+                    string buocMoi = _cacBuocTienDo[idx + 1];
+                    don.CapNhatTrangThai(buocMoi);
+                    CapNhatThongKeGiatUi(_dsGiatUi);
                 }
                 else
                 {
-                    var partnerHeader = new MenuItem
-                    {
-                        Header = "👉 Chọn tiệm để bàn giao tất cả đơn đã chọn:",
-                        FontWeight = FontWeights.Bold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(15, 23, 42)),
-                        IsEnabled = false
-                    };
-                    contextMenu.Items.Add(partnerHeader);
-
-                    foreach (var partner in activePartners)
-                    {
-                        bool supportsAll = dispatchableOrders.All(ord => partner.SupportsOrder(ord));
-                        var partnerItem = new MenuItem
-                        {
-                            Header = supportsAll
-                                ? $"🏢 {partner.Name} (SĐT: {partner.PhoneNumber})"
-                                : $"⛔ {partner.Name} (Không nhận đủ các dịch vụ đã chọn)",
-                            FontWeight = supportsAll ? FontWeights.SemiBold : FontWeights.Normal,
-                            Foreground = supportsAll ? new SolidColorBrush(Color.FromRgb(2, 132, 199)) : new SolidColorBrush(Color.FromRgb(148, 163, 184)),
-                            IsEnabled = supportsAll,
-                            ToolTip = supportsAll
-                                ? $"Click để bàn giao ngay {dispatchableOrders.Count} đơn đã chọn cho [{partner.Name}]"
-                                : $"Tiệm [{partner.Name}] chưa đăng ký làm tất cả các loại dịch vụ trong nhóm đơn đã chọn."
-                        };
-
-                        if (supportsAll)
-                        {
-                            partnerItem.Click += (s, ev) =>
-                            {
-                                int successCount = 0;
-                                foreach (var ord in dispatchableOrders)
-                                {
-                                    DataService.Instance.AssignPartnerToLaundryOrder(ord, partner);
-                                    successCount++;
-                                }
-
-                                (DataContext as ViewModels.LaundryViewModel)?.RefreshPendingReturns();
-                                (DataContext as ViewModels.LaundryViewModel)?.ApplyLaundryFilter();
-
-                                MessageBox.Show(
-                                    $"Đã bàn giao thành công {successCount} đơn giặt ủi cho đối tác [{partner.Name}]!\n\n" +
-                                    $"• Tổng trọng lượng: {totalWeight:0.#} kg\n" +
-                                    $"• Trạng thái các đơn đã chuyển sang 'Đang giặt'.",
-                                    "Thông báo",
-                                    MessageBoxButton.OK,
-                                    MessageBoxImage.Information
-                                );
-                            };
-                        }
-
-                        contextMenu.Items.Add(partnerItem);
-                    }
+                    MessageBox.Show($"Đơn {don.MaDon} của khách [{don.TenKhachHang}] đã ở trạng thái cuối cùng (Đã giao khách)!",
+                                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
+            }
+        }
 
-                // Tùy chọn hủy hàng loạt các đơn chờ giao tiệm
-                var cancelableOrders = selectedOrders.Where(o => o.CanCancel).ToList();
-                if (cancelableOrders.Any())
-                {
-                    contextMenu.Items.Add(new Separator());
-                    var cancelAllItem = new MenuItem
-                    {
-                        Header = $"❌ HỦY {cancelableOrders.Count} ĐƠN GIẶT ỦI ĐÃ CHỌN",
-                        FontWeight = FontWeights.Bold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38))
-                    };
-                    cancelAllItem.Click += (s, ev) =>
-                    {
-                        var result = MessageBox.Show(
-                            $"Bạn có chắc chắn muốn hủy {cancelableOrders.Count} đơn giặt ủi đã chọn không?",
-                            "Thông báo",
-                            MessageBoxButton.YesNo,
-                            MessageBoxImage.Question);
-                        if (result == MessageBoxResult.Yes && DataContext is ViewModels.LaundryViewModel vm)
-                        {
-                            foreach (var ord in cancelableOrders)
-                            {
-                                DataService.Instance.CancelLaundryOrder(ord);
-                            }
-                            vm.ApplyLaundryFilter();
-                            vm.RefreshPendingReturns();
-                            MessageBox.Show($"Đã hủy {cancelableOrders.Count} đơn giặt ủi thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
-                        }
-                    };
-                    contextMenu.Items.Add(cancelAllItem);
-                }
+        private void BtnLichSuGiatUi_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is DonGiatUiHienThi don)
+            {
+                string lichSu = string.Join("\n", don.LichSuTienDo.Select(x => "  • " + x));
+                MessageBox.Show(
+                    $"MÃ ĐƠN: {don.MaDon} - KHÁCH: {don.TenKhachHang}\n" +
+                    $"Dịch vụ: {don.DichVu} | Đơn giá: {don.DonGia} VNĐ\n" +
+                    $"Trạng thái hiện tại: {don.TrangThai} (Tiến độ: {don.TienDo}%)\n" +
+                    $"----------------------------------------------------\n" +
+                    $"NHẬT KÝ TIẾN ĐỘ 6 BƯỚC:\n{lichSu}",
+                    "Lịch Sử Tiến Độ Giặt Ủi", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void BtnTiepNhanDon_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(txtTenKhachGui.Text))
+            {
+                MessageBox.Show("Vui lòng nhập Tên khách hàng hoặc Số phòng!", "Thiếu thông tin", MessageBoxButton.OK, MessageBoxImage.Warning);
+                txtTenKhachGui.Focus();
+                return;
+            }
+
+            string ma = string.IsNullOrWhiteSpace(txtMaDonGui.Text) ? $"DH{_dsGiatUi.Count + 1:000}" : txtMaDonGui.Text.Trim().ToUpper();
+            string ten = txtTenKhachGui.Text.Trim();
+            string sdt = string.IsNullOrWhiteSpace(txtSdtGui.Text) ? "0900 000 000" : txtSdtGui.Text.Trim();
+            string dichVu = (cboLoaiGiatUi.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Giặt sấy thường (Theo kg)";
+            string donGia = string.IsNullOrWhiteSpace(txtDonGiaGui.Text) ? "50.000" : txtDonGiaGui.Text.Trim();
+
+            var donTonTai = _dsGiatUi.FirstOrDefault(x => x.MaDon.Equals(ma, StringComparison.OrdinalIgnoreCase));
+            if (donTonTai != null)
+            {
+                donTonTai.TenKhachHang = ten;
+                donTonTai.SoDienThoai = sdt;
+                donTonTai.DichVu = dichVu;
+                donTonTai.DonGia = donGia;
+                donTonTai.LichSuTienDo.Add($"[{DateTime.Now:HH:mm dd/MM/yyyy}] Cập nhật thông tin đơn ({dichVu} - {donGia} đ)");
+                CapNhatThongKeGiatUi(_dsGiatUi);
+                MessageBox.Show($"Đã cập nhật thông tin đơn [{ma}] thành công!", "Cập nhật", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
-                // ==================== BÀN GIAO 1 ĐƠN LẺ ====================
-                var singleOrder = dispatchableOrders.FirstOrDefault() ?? clickedOrder ?? selectedOrders.FirstOrDefault();
-                if (singleOrder == null) return;
-
-                var titleItem = new MenuItem
-                {
-                    Header = $"🧺 ĐƠN GIẶT [{singleOrder.OrderCode}] - {singleOrder.StatusDisplay}",
-                    FontWeight = FontWeights.Bold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(30, 41, 59)),
-                    IsEnabled = false
-                };
-                contextMenu.Items.Add(titleItem);
-
-                var infoItem = new MenuItem
-                {
-                    Header = $"Khách: {singleOrder.CustomerName} (P.{singleOrder.RoomNumber}) · {singleOrder.WeightKg} kg · {singleOrder.TotalPrice:N0} đ",
-                    FontSize = 11,
-                    Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
-                    IsEnabled = false
-                };
-                contextMenu.Items.Add(infoItem);
-                contextMenu.Items.Add(new Separator());
-
-                if (singleOrder.CanDispatch)
-                {
-                    var dispatchHeader = new MenuItem
-                    {
-                        Header = "🚚 Chọn tiệm bàn giao:",
-                        FontWeight = FontWeights.Bold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(3, 105, 161)),
-                        IsEnabled = false
-                    };
-                    contextMenu.Items.Add(dispatchHeader);
-
-                    foreach (var partner in activePartners)
-                    {
-                        bool supports = partner.SupportsOrder(singleOrder);
-                        decimal costPerKg = supports ? partner.GetCostPriceForOrder(singleOrder) : 0m;
-                        decimal totalCost = Math.Round(singleOrder.WeightKg * costPerKg, 0);
-                        decimal hotelProfit = singleOrder.TotalPrice - totalCost;
-
-                        var partnerItem = new MenuItem
-                        {
-                            Header = supports
-                                ? $"🏢 {partner.Name} (Giá vốn: {costPerKg:N0} đ/kg · KS lời: {hotelProfit:N0} đ)"
-                                : $"⛔ {partner.Name} (Không nhận dịch vụ {singleOrder.ServiceTypeDisplay})",
-                            FontWeight = supports ? FontWeights.SemiBold : FontWeights.Normal,
-                            Foreground = supports ? new SolidColorBrush(Color.FromRgb(2, 132, 199)) : new SolidColorBrush(Color.FromRgb(148, 163, 184)),
-                            IsEnabled = supports,
-                            ToolTip = supports
-                                ? $"Địa chỉ: {partner.Address}\nSĐT: {partner.PhoneNumber}\n\n👉 Click chuột trái để bàn giao ngay cho [{partner.Name}]"
-                                : $"Đối tác [{partner.Name}] không có dịch vụ [{singleOrder.ServiceTypeDisplay}] trong bảng giá vốn."
-                        };
-
-                        if (supports)
-                        {
-                            partnerItem.Click += (s, ev) =>
-                            {
-                                DataService.Instance.AssignPartnerToLaundryOrder(singleOrder, partner);
-                                (DataContext as ViewModels.LaundryViewModel)?.RefreshPendingReturns();
-                                (DataContext as ViewModels.LaundryViewModel)?.ApplyLaundryFilter();
-
-                                MessageBox.Show(
-                                    $"Đã bàn giao đơn hàng {singleOrder.OrderCode} cho đối tác [{partner.Name}] thành công!\n\n" +
-                                    $"• Trạng thái: Đang giặt\n" +
-                                    $"• Giá vốn: {costPerKg:N0} đ/kg ({totalCost:N0} đ)\n" +
-                                    $"• Khách sạn lời: {hotelProfit:N0} đ",
-                                    "Thông báo",
-                                    MessageBoxButton.OK,
-                                    MessageBoxImage.Information
-                                );
-                            };
-                        }
-
-                        contextMenu.Items.Add(partnerItem);
-                    }
-
-                    var openDialogItem = new MenuItem
-                    {
-                        Header = "📋 Mở bảng chi tiết bàn giao đối tác...",
-                        FontSize = 11.5
-                    };
-                    openDialogItem.Click += (s, ev) =>
-                    {
-                        var compatible = activePartners.Where(p => p.SupportsOrder(singleOrder)).ToList();
-                        if (!compatible.Any())
-                        {
-                            MessageBox.Show($"Hiện chưa có đối tác đang hợp tác nào hỗ trợ dịch vụ [{singleOrder.ServiceTypeDisplay}]!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
-                            return;
-                        }
-                        var dlg = new SelectPartnerDialogWindow(compatible, singleOrder);
-                        if (dlg.ShowDialog() == true && dlg.SelectedPartner != null)
-                        {
-                            DataService.Instance.AssignPartnerToLaundryOrder(singleOrder, dlg.SelectedPartner);
-                            (DataContext as ViewModels.LaundryViewModel)?.RefreshPendingReturns();
-                            (DataContext as ViewModels.LaundryViewModel)?.ApplyLaundryFilter();
-                            MessageBox.Show($"Đã bàn giao đơn hàng {singleOrder.OrderCode} cho đối tác [{dlg.SelectedPartner.Name}] thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
-                        }
-                    };
-                    contextMenu.Items.Add(openDialogItem);
-                }
-
-                if (singleOrder.CanCancel)
-                {
-                    contextMenu.Items.Add(new Separator());
-                    var cancelItem = new MenuItem
-                    {
-                        Header = "❌ HỦY ĐƠN GIẶT ỦI",
-                        FontWeight = FontWeights.Bold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(220, 38, 38)),
-                        ToolTip = "Hủy đơn giặt khi còn ở trạng thái Chờ giao tiệm. Tự động xóa khỏi bill phòng hoặc hoàn tiền lại nếu đã thanh toán trực tiếp."
-                    };
-                    cancelItem.Click += (s, ev) =>
-                    {
-                        if (DataContext is ViewModels.LaundryViewModel vm)
-                        {
-                            vm.CancelOrder(singleOrder);
-                        }
-                    };
-                    contextMenu.Items.Add(cancelItem);
-                }
+                var donMoi = new DonGiatUiHienThi(ma, ten, sdt, dichVu, "Đã tiếp nhận", donGia);
+                _dsGiatUi.Insert(0, donMoi);
+                CapNhatThongKeGiatUi(_dsGiatUi);
+                MessageBox.Show($"Đã tiếp nhận đơn giặt ủi mới [{ma}] cho khách {ten}!", "Tiếp nhận thành công", MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
-            targetElement.ContextMenu = contextMenu;
-            contextMenu.IsOpen = true;
+            BtnLamMoiFormGiatUi_Click(null, null);
         }
+
+        private void BtnXacNhanGiaoHang_Click(object sender, RoutedEventArgs e)
+        {
+            if (dgDonGiatUi.SelectedItem is DonGiatUiHienThi don)
+            {
+                if (don.TrangThai == "Đã giao khách")
+                {
+                    MessageBox.Show($"Đơn {don.MaDon} đã được giao cho khách trước đó!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                don.CapNhatTrangThai("Đã giao khách");
+                CapNhatThongKeGiatUi(_dsGiatUi);
+                MessageBox.Show($"Đã xác nhận bàn giao đồ giặt ủi đơn [{don.MaDon}] cho khách {don.TenKhachHang}!",
+                                "Xác nhận giao khách", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show("Vui lòng chọn một đơn trong bảng để xác nhận giao khách!", "Chưa chọn đơn", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private void BtnChiTietDon_Click(object sender, RoutedEventArgs e)
+        {
+            if (dgDonGiatUi.SelectedItem is DonGiatUiHienThi don)
+            {
+                string lichSu = string.Join("\n", don.LichSuTienDo.Select(x => "  • " + x));
+                MessageBox.Show(
+                    $"THÔNG TIN CHI TIẾT ĐƠN GIẶT ỦI\n" +
+                    $"====================================\n" +
+                    $"Mã đơn:         {don.MaDon}\n" +
+                    $"Khách hàng:     {don.TenKhachHang}\n" +
+                    $"Số điện thoại:  {don.SoDienThoai}\n" +
+                    $"Loại dịch vụ:   {don.DichVu}\n" +
+                    $"Đơn giá:        {don.DonGia} VNĐ\n" +
+                    $"Trạng thái:     {don.TrangThai} ({don.TienDo}%)\n\n" +
+                    $"LỊCH SỬ XỬ LÝ:\n{lichSu}",
+                    "Chi Tiết Đơn Giặt Ủi", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show("Vui lòng bấm chọn 1 đơn trong bảng danh sách bên trái để xem chi tiết!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void DgDonGiatUi_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (dgDonGiatUi.SelectedItem is DonGiatUiHienThi don)
+            {
+                txtMaDonGui.Text = don.MaDon;
+                txtTenKhachGui.Text = don.TenKhachHang;
+                txtSdtGui.Text = don.SoDienThoai;
+                txtDonGiaGui.Text = don.DonGia;
+
+                foreach (ComboBoxItem item in cboLoaiGiatUi.Items)
+                {
+                    if (item.Content?.ToString() == don.DichVu)
+                    {
+                        cboLoaiGiatUi.SelectedItem = item;
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void CboLoaiGiatUi_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (cboLoaiGiatUi.SelectedItem is ComboBoxItem item && item.Tag != null && txtDonGiaGui != null)
+            {
+                if (dgDonGiatUi == null || dgDonGiatUi.SelectedItem == null)
+                {
+                    txtDonGiaGui.Text = item.Tag.ToString();
+                }
+            }
+        }
+
+        private void BtnLamMoiFormGiatUi_Click(object sender, RoutedEventArgs e)
+        {
+            if (dgDonGiatUi != null) dgDonGiatUi.SelectedItem = null;
+            TaoMaDonTiepTheo();
+            txtTenKhachGui?.Clear();
+            txtSdtGui?.Clear();
+            if (cboLoaiGiatUi != null) cboLoaiGiatUi.SelectedIndex = 0;
+            if (txtDonGiaGui != null) txtDonGiaGui.Text = "50.000";
+        }
+
+        private void BtnLamMoiGiatUi_Click(object sender, RoutedEventArgs e)
+        {
+            txtTimKiemGiatUi?.Clear();
+            if (txtTrangThaiLoc != null) txtTrangThaiLoc.Text = "Hiển thị: Tất cả các bước";
+            CapNhatThongKeGiatUi(_dsGiatUi);
+            BtnLamMoiFormGiatUi_Click(null, null);
+        }
+
+        private void TxtTimKiemGiatUi_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_dsGiatUi == null) return;
+            string kw = txtTimKiemGiatUi.Text.Trim().ToLower();
+
+            if (string.IsNullOrEmpty(kw))
+            {
+                if (txtTrangThaiLoc != null) txtTrangThaiLoc.Text = "Hiển thị: Tất cả các bước";
+                CapNhatThongKeGiatUi(_dsGiatUi);
+            }
+            else
+            {
+                if (txtTrangThaiLoc != null) txtTrangThaiLoc.Text = $"Tìm kiếm: \"{txtTimKiemGiatUi.Text}\"";
+                dgDonGiatUi.ItemsSource = _dsGiatUi.Where(x =>
+                    x.MaDon.ToLower().Contains(kw) ||
+                    x.TenKhachHang.ToLower().Contains(kw) ||
+                    x.SoDienThoai.ToLower().Contains(kw) ||
+                    x.DichVu.ToLower().Contains(kw) ||
+                    x.TrangThai.ToLower().Contains(kw)).ToList();
+            }
+        }
+
+        private void CardLocTatCa_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (txtTrangThaiLoc != null) txtTrangThaiLoc.Text = "Hiển thị: Tất cả các bước";
+            CapNhatThongKeGiatUi(_dsGiatUi);
+        }
+
+        private void CardLocDangXuLy_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (txtTrangThaiLoc != null) txtTrangThaiLoc.Text = "Đang lọc: Đơn đang xử lý (Giặt / Sấy / Ủi)";
+            dgDonGiatUi.ItemsSource = _dsGiatUi.Where(x =>
+                x.TrangThai == "Đang giặt" || x.TrangThai == "Đang sấy" || x.TrangThai == "Đang ủi").ToList();
+        }
+
+        private void CardLocChoGiao_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (txtTrangThaiLoc != null) txtTrangThaiLoc.Text = "Đang lọc: Đơn đã hoàn thành chờ giao khách";
+            dgDonGiatUi.ItemsSource = _dsGiatUi.Where(x => x.TrangThai == "Hoàn thành").ToList();
+        }
+
+        private void StepFilter_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement el && el.Tag is string buoc)
+            {
+                if (txtTrangThaiLoc != null) txtTrangThaiLoc.Text = $"Đang lọc theo bước: {buoc}";
+                dgDonGiatUi.ItemsSource = _dsGiatUi.Where(x => x.TrangThai == buoc).ToList();
+            }
+        }
+    }
+
+    public class DonGiatUiHienThi : INotifyPropertyChanged
+    {
+        private string _maDon;
+        public string MaDon
+        {
+            get => _maDon;
+            set { _maDon = value; OnPropertyChanged(nameof(MaDon)); }
+        }
+
+        private string _tenKhachHang;
+        public string TenKhachHang
+        {
+            get => _tenKhachHang;
+            set { _tenKhachHang = value; OnPropertyChanged(nameof(TenKhachHang)); }
+        }
+
+        private string _soDienThoai;
+        public string SoDienThoai
+        {
+            get => _soDienThoai;
+            set { _soDienThoai = value; OnPropertyChanged(nameof(SoDienThoai)); }
+        }
+
+        private string _dichVu;
+        public string DichVu
+        {
+            get => _dichVu;
+            set { _dichVu = value; OnPropertyChanged(nameof(DichVu)); }
+        }
+
+        private string _donGia;
+        public string DonGia
+        {
+            get => _donGia;
+            set { _donGia = value; OnPropertyChanged(nameof(DonGia)); }
+        }
+
+        private string _trangThai;
+        public string TrangThai
+        {
+            get => _trangThai;
+            set { _trangThai = value; OnPropertyChanged(nameof(TrangThai)); }
+        }
+
+        private int _tienDo;
+        public int TienDo
+        {
+            get => _tienDo;
+            set { _tienDo = value; OnPropertyChanged(nameof(TienDo)); }
+        }
+
+        private Brush _mauNen;
+        public Brush MauNen
+        {
+            get => _mauNen;
+            set { _mauNen = value; OnPropertyChanged(nameof(MauNen)); }
+        }
+
+        private Brush _mauChu;
+        public Brush MauChu
+        {
+            get => _mauChu;
+            set { _mauChu = value; OnPropertyChanged(nameof(MauChu)); }
+        }
+
+        public List<string> LichSuTienDo { get; set; } = new List<string>();
+
+        public DonGiatUiHienThi(string ma, string ten, string sdt, string dv, string tt, string gia)
+        {
+            MaDon = ma;
+            TenKhachHang = ten;
+            SoDienThoai = sdt;
+            DichVu = dv;
+            DonGia = gia;
+            LichSuTienDo.Add($"[{DateTime.Now.AddMinutes(-30):HH:mm dd/MM/yyyy}] Khởi tạo đơn giặt ủi ({dv})");
+            CapNhatTrangThai(tt);
+        }
+
+        public void CapNhatTrangThai(string trangThaiMoi)
+        {
+            TrangThai = trangThaiMoi;
+            var bc = new BrushConverter();
+
+            switch (trangThaiMoi)
+            {
+                case "Đã tiếp nhận":
+                    TienDo = 16;
+                    MauNen = (Brush)bc.ConvertFrom("#DCFCE7");
+                    MauChu = (Brush)bc.ConvertFrom("#15803D");
+                    break;
+                case "Đang giặt":
+                    TienDo = 35;
+                    MauNen = (Brush)bc.ConvertFrom("#DBEAFE");
+                    MauChu = (Brush)bc.ConvertFrom("#1D4ED8");
+                    break;
+                case "Đang sấy":
+                    TienDo = 55;
+                    MauNen = (Brush)bc.ConvertFrom("#FEF9C3");
+                    MauChu = (Brush)bc.ConvertFrom("#A16207");
+                    break;
+                case "Đang ủi":
+                    TienDo = 75;
+                    MauNen = (Brush)bc.ConvertFrom("#E0E7FF");
+                    MauChu = (Brush)bc.ConvertFrom("#4338CA");
+                    break;
+                case "Hoàn thành":
+                    TienDo = 90;
+                    MauNen = (Brush)bc.ConvertFrom("#FEE2E2");
+                    MauChu = (Brush)bc.ConvertFrom("#B91C1C");
+                    break;
+                case "Đã giao khách":
+                    TienDo = 100;
+                    MauNen = (Brush)bc.ConvertFrom("#E2E8F0");
+                    MauChu = (Brush)bc.ConvertFrom("#334155");
+                    break;
+            }
+
+            LichSuTienDo.Add($"[{DateTime.Now:HH:mm dd/MM/yyyy}] Chuyển trạng thái -> {trangThaiMoi} ({TienDo}%)");
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }
