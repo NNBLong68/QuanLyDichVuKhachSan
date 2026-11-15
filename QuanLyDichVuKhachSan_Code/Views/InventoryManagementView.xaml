@@ -74,19 +74,25 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- 1. Header & Quick Refresh -->
+        <!-- 1. Header & Quick Actions -->
         <Grid Grid.Row="0" Margin="0,0,0,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBlock Text="📦 QUẢN LÝ KHO HÀNG" FontSize="19" FontWeight="Bold" Foreground="#0F172A" VerticalAlignment="Center"/>
-            <Button Grid.Column="1" Command="{Binding RefreshCommand}" Content="🔄 Làm Mới Dữ Liệu" Style="{StaticResource ModernButton}" Height="32" Padding="12,0"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Command="{Binding DownloadTemplateCommand}" Content="📄 Tải Excel Mẫu" Style="{StaticResource ModernButton}" Height="32" Padding="12,0" Margin="0,0,8,0" Background="#0284C7"/>
+                <Button Command="{Binding ImportExcelCommand}" Content="📥 Nhập Kho Từ Excel" Style="{StaticResource ModernButton}" Height="32" Padding="12,0" Margin="0,0,8,0" Background="#059669"/>
+                <Button Command="{Binding RefreshCommand}" Content="🔄 Làm Mới Dữ Liệu" Style="{StaticResource ModernButton}" Height="32" Padding="12,0"/>
+            </StackPanel>
         </Grid>
 
-        <!-- 2. KPI Summary Cards: bấm để điều hướng 3 màn hình kho hàng -->
+        <!-- 2. KPI Summary Cards: bấm để điều hướng 4 màn hình kho hàng -->
         <Grid Grid.Row="1" Margin="0,0,0,14">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="12"/>
                 <ColumnDefinition Width="*"/>
@@ -217,211 +223,51 @@
                     <TextBlock Grid.Column="1" Text="⏰" FontSize="26" VerticalAlignment="Center" Margin="10,0,0,0"/>
                 </Grid>
             </Button>
-        </Grid>
 
-        <!-- 3. Tab Bar Navigation: giữ lại 2 tab nhập kho & lịch sử -->
-        <Border Grid.Row="2" Background="#F1F5F9" CornerRadius="8" Padding="4" Margin="0,0,0,14">
-            <StackPanel Orientation="Horizontal">
-                <RadioButton Content="📥 1. LẬP PHIẾU NHẬP KHO" Command="{Binding SetTabCommand}" CommandParameter="Receipt"
-                             IsChecked="{Binding IsReceiptTabActive, Mode=OneWay}"
-                             Style="{StaticResource SegmentTabButton}" Margin="0,0,4,0"/>
-                <RadioButton Content="📜 2. LỊCH SỬ NHẬP KHO" Command="{Binding SetTabCommand}" CommandParameter="History"
-                             IsChecked="{Binding IsHistoryTabActive, Mode=OneWay}"
-                             Style="{StaticResource SegmentTabButton}"/>
-            </StackPanel>
-        </Border>
-
-        <!-- 4. Content Workspace By Tab -->
-        <Grid Grid.Row="3">
-
-            <!-- ====================================================================== -->
-            <!-- TAB 1: LẬP PHIẾU NHẬP KHO                                              -->
-            <!-- ====================================================================== -->
-            <Grid x:Name="SubTabReceipt">
-                <Grid.Style>
-                    <Style TargetType="Grid">
-                        <Setter Property="Visibility" Value="Hidden"/>
-                        <Setter Property="IsHitTestVisible" Value="False"/>
+            <!-- Card 4: Lịch sử nhập kho -->
+            <Button Grid.Column="6" Command="{Binding SetTabCommand}" CommandParameter="History"
+                    ToolTip="Xem lịch sử các phiếu nhập kho và tải lại file Excel">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource InventoryKpiCardButton}">
+                        <Setter Property="Background" Value="#F5F3FF"/>
+                        <Setter Property="BorderBrush" Value="#DDD6FE"/>
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding ActiveTab}" Value="Receipt">
-                                <Setter Property="Visibility" Value="Visible"/>
-                                <Setter Property="IsHitTestVisible" Value="True"/>
+                            <DataTrigger Binding="{Binding ActiveTab}" Value="History">
+                                <Setter Property="BorderBrush" Value="#6D28D9"/>
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
-                </Grid.Style>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="410"/>
-                    <ColumnDefinition Width="14"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
+                </Button.Style>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="LỊCH SỬ NHẬP KHO" FontSize="10.5" FontWeight="Bold" Foreground="#6D28D9"/>
+                        <TextBlock Text="{Binding ReceiptHistoryCount, StringFormat='{}{0} Phiếu'}" FontSize="20" FontWeight="Bold" Foreground="#6D28D9" Margin="0,4,0,0"/>
+                        <TextBlock FontSize="9.5" Margin="0,6,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="Bấm để xem &amp; tải Excel"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveTab}" Value="History">
+                                            <Setter Property="Text" Value="✓ Đang xem"/>
+                                            <Setter Property="Foreground" Value="#6D28D9"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="📜" FontSize="26" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                </Grid>
+            </Button>
+        </Grid>
 
-                <!-- CỘT TRÁI: FORM NHẬP HÀNG (ĐÃ BỎ TIÊU ĐỀ SOẠN DÒNG HÀNG NHẬP, CÓ NÚT CÂY BÚT KHÓA ĐVT & HỆ SỐ) -->
-                <Border Grid.Column="0" Style="{StaticResource CardPanel}">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" helpers:TabProgressiveRender.IsDataRegion="True">
-                        <StackPanel>
-                            <!-- Chọn Mặt Hàng -->
-                            <TextBlock Text="Chọn Mặt Hàng Nhập:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                            <ComboBox ItemsSource="{Binding Data.FoodItems}" SelectedItem="{Binding SelectedItemToImport}" DisplayMemberPath="Name" Height="34" Margin="0,0,0,4"/>
-                            <Border Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,0,8">
-                                <TextBlock Text="{Binding ReferenceSpecAndPrice}" FontSize="10.5" FontWeight="SemiBold" Foreground="#15803D" TextWrapping="Wrap"/>
-                            </Border>
-
-                            <!-- Quy cách ĐVT & Hệ số quy đổi (Cố định từ danh mục cấu hình mặt hàng) -->
-                            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,8">
-                                <StackPanel>
-                                    <TextBlock Text="QUY CÁCH ĐVT &amp; HỆ SỐ QUY ĐỔI" FontSize="10" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,4"/>
-
-                                    <!-- 2 Ô Input: Hiển thị cố định (ReadOnly) theo cấu hình mặt hàng -->
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="8"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="ĐVT Lúc Nhập:" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,2"/>
-                                            <TextBox Text="{Binding ImportUnit, Mode=OneWay}" 
-                                                     IsReadOnly="True"
-                                                     Background="#F1F5F9"
-                                                     Style="{StaticResource ModernTextBox}" Height="32"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2">
-                                            <TextBlock Text="Hệ Số Quy Đổi Lẻ:" FontSize="10.5" FontWeight="SemiBold" Foreground="#0284C7" Margin="0,0,0,2"/>
-                                            <TextBox Text="{Binding ConversionRate, Mode=OneWay}" 
-                                                     IsReadOnly="True"
-                                                     Background="#F1F5F9"
-                                                     Style="{StaticResource ModernTextBox}" Height="32" FontWeight="Bold" Foreground="#0284C7"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- Số lượng & Đơn giá nhập sỉ -->
-                            <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="8"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Số Lượng (ĐVT Nhập):" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                                    <TextBox Text="{Binding ImportQuantity, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="32" FontWeight="Bold"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2">
-                                    <TextBlock Text="Giá Nhập / 1 ĐVT:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                                    <TextBox Text="{Binding ImportPrice, UpdateSourceTrigger=PropertyChanged, StringFormat='{}{0:N0}'}" Style="{StaticResource ModernTextBox}" Height="32" FontWeight="Bold"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <!-- Số Lô & HSD -->
-                            <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="8"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Số Lô In Bao Bì:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                                    <TextBox Text="{Binding BatchNumber, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="32"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2">
-                                    <TextBlock Text="Hạn Sử Dụng (HSD):" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                                    <DatePicker SelectedDate="{Binding ExpiryDate}" Height="32"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <!-- Ghi chú dòng hàng -->
-                            <TextBlock Text="Ghi Chú Dòng Hàng:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                            <TextBox Text="{Binding LineNote, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="30" Margin="0,0,0,10"/>
-
-                            <!-- Xem trước tính toán -->
-                            <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,12">
-                                <StackPanel>
-                                    <TextBlock Text="📊 XEM TRƯỚC TÍNH TOÁN DÒNG HÀNG:" FontSize="10.5" FontWeight="Bold" Foreground="#1E40AF" Margin="0,0,0,4"/>
-                                    <TextBlock Text="{Binding TotalRetailUnitsDisplay, StringFormat='{}📦 Tồn lẻ cộng thêm: {0}'}" FontSize="11" FontWeight="SemiBold" Foreground="#1E293B"/>
-                                    <TextBlock Text="{Binding TotalImportCostDisplay, StringFormat='{}💰 Tổng tiền dòng: {0}'}" FontSize="11" FontWeight="Bold" Foreground="#D97706" Margin="0,2,0,0"/>
-                                    <TextBlock Text="{Binding CostPerRetailUnitDisplay, StringFormat='{}🚀 Giá vốn 1 đơn vị lẻ: {0}'}" FontSize="11" FontWeight="SemiBold" Foreground="#059669" Margin="0,2,0,0"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Button Command="{Binding AddDraftItemCommand}" Content="➕ Thêm Dòng Hàng Vào Phiếu" Style="{StaticResource ModernButton}" Background="#0284C7" Height="36" FontWeight="Bold"/>
-                        </StackPanel>
-                    </ScrollViewer>
-                </Border>
-
-                <!-- CỘT PHẢI: BẢNG CÁC DÒNG HÀNG ĐANG LẬP TRONG PHIẾU NHẬP -->
-                <Border Grid.Column="2" Style="{StaticResource CardPanel}">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/> <!-- Header Thông Tin Phiếu Nhập -->
-                            <RowDefinition Height="*"/>    <!-- DataGrid Dòng Hàng Đang Soạn -->
-                            <RowDefinition Height="Auto"/> <!-- Footer: Tổng Hợp & Lập Phiếu -->
-                        </Grid.RowDefinitions>
-
-                        <!-- Header Thông tin phiếu -->
-                        <Grid Grid.Row="0" Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130"/>
-                                <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="190"/>
-                                <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="Mã Phiếu Nhập (Auto):" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                                <TextBox Text="{Binding ReceiptCode, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="32" FontWeight="Bold"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Nhà Cung Cấp / Nguồn Hàng:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                                <ComboBox ItemsSource="{Binding Data.Suppliers}" SelectedItem="{Binding SelectedSupplier}" DisplayMemberPath="Name" Height="32"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="4">
-                                <TextBlock Text="Ghi Chú Chung Phiếu Nhập:" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" Margin="0,0,0,3"/>
-                                <TextBox Text="{Binding ReceiptNote, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Height="32" ToolTip="Nhập số hóa đơn NCC, người giao hàng..."/>
-                            </StackPanel>
-                        </Grid>
-
-                        <!-- DataGrid Danh Sách Dòng Hàng Đang Lập -->
-                        <Border Grid.Row="1" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" helpers:TabProgressiveRender.IsDataRegion="True">
-                            <DataGrid ItemsSource="{Binding DraftReceiptItems}" AutoGenerateColumns="False" IsReadOnly="True">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Mặt Hàng" Binding="{Binding FoodItemName}" Width="Auto" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="ĐVT Nhập" Binding="{Binding ImportUnit}" Width="Auto"/>
-                                    <DataGridTextColumn Header="Hệ Số" Binding="{Binding ConversionRate}" Width="Auto"/>
-                                    <DataGridTextColumn Header="SL Nhập" Binding="{Binding Quantity}" Width="Auto" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="Quy Đổi Lẻ" Binding="{Binding CalculationSummary}" Width="Auto"/>
-                                    <DataGridTextColumn Header="Đơn Giá Nhập" Binding="{Binding ImportPrice, StringFormat='{}{0:N0} đ'}" Width="Auto"/>
-                                    <DataGridTextColumn Header="Thành Tiền" Binding="{Binding TotalCost, StringFormat='{}{0:N0} đ'}" Width="Auto" FontWeight="Bold" Foreground="#D97706"/>
-                                    <DataGridTextColumn Header="Số Lô" Binding="{Binding BatchNumber}" Width="Auto"/>
-                                    <DataGridTextColumn Header="HSD" Binding="{Binding ExpiryDisplay}" Width="Auto"/>
-                                    <DataGridTemplateColumn Header="Thao Tác" Width="Auto">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Button Content="❌ Xóa" Command="{Binding DataContext.RemoveDraftItemCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="#EF4444" Foreground="White" BorderThickness="0" Padding="4,2" FontSize="10" Cursor="Hand"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Border>
-
-                        <!-- Footer: Tổng Hợp & Nút Hoàn Tất -->
-                        <Grid Grid.Row="2" Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding DraftItemsCount, StringFormat='{}📋 {0} Mặt hàng | '}" FontSize="12" FontWeight="SemiBold" Foreground="#475569"/>
-                                <TextBlock Text="{Binding DraftTotalRetailUnits, StringFormat='{}📦 Tổng tồn lẻ: +{0} đơn vị | '}" FontSize="12" FontWeight="Bold" Foreground="#0284C7"/>
-                                <TextBlock Text="{Binding DraftTotalCost, StringFormat='{}💰 Tổng hóa đơn: {0:N0} đ'}" FontSize="13" FontWeight="Bold" Foreground="#D97706"/>
-                            </StackPanel>
-                            <Button Grid.Column="1" Command="{Binding CommitReceiptCommand}" Content="💾 LẬP PHIẾU &amp; CẬP NHẬT KHO" Style="{StaticResource ModernButton}" Background="#059669" Height="38" Padding="16,0" FontWeight="Bold"/>
-                        </Grid>
-                    </Grid>
-                </Border>
-            </Grid>
+        <!-- 4. Content Workspace By Tab -->
+        <Grid Grid.Row="3">
 
             <!-- ====================================================================== -->
             <!-- MÀN 1: KHO HÀNG ĐANG QUẢN LÝ (MẶC ĐỊNH)                                -->
@@ -936,27 +782,59 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Text="📜 LỊCH SỬ CÁC LÔ HÀNG ĐÃ NHẬP KHO" FontSize="15" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,10"/>
-                        <DataGrid Grid.Row="1" ItemsSource="{Binding Data.InventoryBatches}" AutoGenerateColumns="False" IsReadOnly="True" helpers:TabProgressiveRender.IsDataRegion="True">
+
+                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="300"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="📜 LỊCH SỬ NHẬP KHO" FontSize="15" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding HistorySearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource ModernTextBox}" Height="30"
+                                     ToolTip="Tìm theo mã phiếu, nhà cung cấp, người nhập hoặc ghi chú..."/>
+                            <Button Grid.Column="3" Content="🔄 Tải Lại" Command="{Binding RefreshCommand}"
+                                    Style="{StaticResource ModernButton}" Height="30" Padding="12,0"/>
+                        </Grid>
+
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding FilteredReceiptHistory}" AutoGenerateColumns="False" IsReadOnly="True"
+                                  helpers:TabProgressiveRender.IsDataRegion="True">
                             <DataGrid.RowStyle>
                                 <Style TargetType="DataGridRow" BasedOn="{StaticResource InventoryRowStyle}"/>
                             </DataGrid.RowStyle>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Mã Phiếu" Binding="{Binding ReceiptCode}" Width="Auto" FontWeight="Bold"/>
-                                <DataGridTextColumn Header="Mặt Hàng" Binding="{Binding FoodItemName}" Width="Auto" FontWeight="Bold"/>
-                                <DataGridTextColumn Header="SL Nhập" Binding="{Binding Quantity}" Width="Auto"/>
-                                <DataGridTextColumn Header="ĐVT" Binding="{Binding ImportUnit}" Width="Auto"/>
-                                <DataGridTextColumn Header="Quy Đổi Lẻ" Binding="{Binding CalculationSummary}" Width="Auto"/>
-                                <DataGridTextColumn Header="Giá Nhập" Binding="{Binding ImportPrice, StringFormat='{}{0:N0} đ'}" Width="Auto"/>
-                                <DataGridTextColumn Header="Tổng Tiền" Binding="{Binding TotalCost, StringFormat='{}{0:N0} đ'}" Width="Auto" FontWeight="Bold" Foreground="#D97706"/>
-                                <DataGridTextColumn Header="Số Lô" Binding="{Binding BatchNumber}" Width="Auto"/>
-                                <DataGridTextColumn Header="Hạn Dùng" Binding="{Binding ExpiryDisplay}" Width="Auto"/>
-                                <DataGridTextColumn Header="Nhà Cung Cấp" Binding="{Binding Supplier}" Width="Auto"/>
-                                <DataGridTextColumn Header="Ngày Nhập" Binding="{Binding ImportDate, StringFormat='{}{0:dd/MM/yyyy HH:mm}'}" Width="Auto"/>
+                                <DataGridTextColumn Header="Mã Phiếu" Binding="{Binding ReceiptCode}" Width="Auto" FontWeight="Bold" Foreground="#6D28D9"/>
+                                <DataGridTextColumn Header="Ngày Nhập" Binding="{Binding ImportDateDisplay}" Width="Auto"/>
+                                <DataGridTextColumn Header="Nhà Cung Cấp" Binding="{Binding Supplier}" Width="Auto" FontWeight="SemiBold"/>
                                 <DataGridTextColumn Header="Người Nhập" Binding="{Binding ImportedBy}" Width="Auto"/>
-                                <DataGridTextColumn Header="Ghi Chú" Binding="{Binding Note}" Width="Auto"/>
+                                <DataGridTextColumn Header="Số Mặt Hàng" Binding="{Binding TotalItemsDisplay}" Width="Auto"/>
+                                <DataGridTextColumn Header="Tổng Tiền" Binding="{Binding TotalCostDisplay}" Width="Auto" FontWeight="Bold" Foreground="#D97706"/>
+                                <DataGridTextColumn Header="Ghi Chú" Binding="{Binding Note}" Width="*"/>
+                                <DataGridTemplateColumn Header="File Excel" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="⬇ Tải Excel"
+                                                    Command="{Binding DataContext.DownloadReceiptExcelCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="{Binding FileExcelDisplay}"
+                                                    Background="#EDE9FE" BorderBrush="#C4B5FD" BorderThickness="1"
+                                                    Foreground="#6D28D9" FontSize="10.5" FontWeight="Bold"
+                                                    Height="26" Padding="8,0" Cursor="Hand"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
+
+                        <Border Grid.Row="1" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8"
+                                Visibility="{Binding HasReceiptHistory, Converter={StaticResource InvBoolToVis}}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="📜" FontSize="30" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                <TextBlock Text="Chưa có phiếu nhập kho nào" FontSize="13" FontWeight="Bold" Foreground="#475569" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Bấm '📄 Tải Excel Mẫu' để tạo file, sau đó dùng '📥 Nhập Kho Từ Excel' để nhập hàng." FontSize="10.5" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
                     </Grid>
                 </Border>
             </Grid>

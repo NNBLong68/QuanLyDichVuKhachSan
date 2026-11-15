@@ -75,8 +75,10 @@
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Mã NV" Binding="{Binding Code}" Width="75" FontWeight="SemiBold"/>
                                 <DataGridTextColumn Header="Họ và Tên" Binding="{Binding FullName}" Width="150" FontWeight="Bold"/>
-                                <DataGridTextColumn Header="CCCD" Binding="{Binding IdentityCard}" Width="120"/>
-                                <DataGridTextColumn Header="SĐT" Binding="{Binding PhoneNumber}" Width="100"/>
+                                <DataGridTextColumn Header="Tài Khoản" Binding="{Binding Username}" Width="95" Foreground="#2563EB" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Mật Khẩu" Binding="{Binding Password}" Width="75" Foreground="#D97706"/>
+                                <DataGridTextColumn Header="CCCD" Binding="{Binding IdentityCard}" Width="110"/>
+                                <DataGridTextColumn Header="SĐT" Binding="{Binding PhoneNumber}" Width="95"/>
                                 <DataGridTextColumn Header="Chức Vụ" Binding="{Binding Position}" Width="100"/>
                                 <DataGridTextColumn Header="Lương Cơ Bản" Binding="{Binding BaseSalary, Converter={StaticResource CurrencyConv}}" Width="105"/>
                                 <DataGridTemplateColumn Width="65">

@@ -203,3 +203,25 @@ WHERE d.TrangThaiDon = N'Đang thuê'
   AND d.NgayTraThucTe IS NULL
   AND GETDATE() >= DATEADD(MINUTE, 30, d.NgayTraDuKien);
 GO
+
+-- 3.9 Khung nhìn tổng hợp thông tin nhân sự và tài khoản đăng nhập được cấp
+IF OBJECT_ID('vw_ThongTinTaiKhoanNhanVien', 'V') IS NOT NULL DROP VIEW vw_ThongTinTaiKhoanNhanVien;
+GO
+CREATE VIEW vw_ThongTinTaiKhoanNhanVien AS
+SELECT 
+    nv.Id AS NhanVienId,
+    nv.MaNV,
+    nv.HoTen,
+    nv.CCCD,
+    nv.SoDienThoai,
+    nv.Email,
+    nv.ChucVu,
+    nv.LuongCoBan,
+    nv.TrangThai AS TrangThaiNhanVien,
+    tknv.Id AS TaiKhoanNhanVienId,
+    tknv.TenDangNhap,
+    tknv.TrangThai AS TrangThaiTaiKhoan,
+    tknv.NgayTao AS NgayCapTaiKhoan
+FROM NhanVien nv
+LEFT JOIN TaiKhoanNhanVien tknv ON nv.Id = tknv.NhanVienId;
+GO

@@ -136,6 +136,7 @@
                                     <StackPanel>
                                         <TextBlock Text="NHÂN VIÊN TRỰC CA HIỆN TẠI:" FontSize="10" FontWeight="Bold" Foreground="#94A3B8"/>
                                         <TextBlock Text="{Binding CurrentDutyStaffDisplay}" FontSize="13" FontWeight="Bold" Foreground="#38BDF8" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                        <TextBlock Text="{Binding CurrentBillActorBannerText}" FontSize="10.5" Foreground="#CBD5E1" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                     </StackPanel>
                                 </Border>
 

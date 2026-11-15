@@ -182,6 +182,12 @@ namespace QuanLyDichVuKhachSan.ViewModels
             {
                 AttachFoodItemListeners(food);
             }
+
+            Auth.AuthStateChanged += () =>
+            {
+                OnPropertyChanged(nameof(IsAdmin));
+                OnPropertyChanged(nameof(IsReceptionist));
+            };
         }
 
         private void AttachFoodItemListeners(FoodItem food)
@@ -323,6 +329,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             string custName = string.IsNullOrWhiteSpace(OrderCustomerName) ? "Khách vãng lai" : OrderCustomerName.Trim();
             string roomNum = DataService.NormalizeRoomNumber(OrderRoomNumber);
 
+            string actor = Data.GetCurrentActorName();
             var order = new FoodOrder
             {
                 CustomerName = custName,
@@ -331,7 +338,10 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 PaymentMethod = IsDirectPayment ? PaymentMethod : "Ghi nợ vào phòng",
                 TotalAmount = CartTotal,
                 Note = OrderNote?.Trim() ?? "",
-                RecordedBy = Auth.IsAdmin ? "Chủ khách sạn (Admin)" : Data.GetCurrentDutyStaffName(DateTime.Now)
+                DaThanhToan = IsDirectPayment,
+                RecordedBy = actor,
+                PaidByStaffName = IsDirectPayment ? actor : "",
+                ThoiGianThanhToan = IsDirectPayment ? DateTime.Now : null
             };
 
             foreach (var item in CurrentCartItems)
