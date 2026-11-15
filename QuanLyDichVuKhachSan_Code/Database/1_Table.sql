@@ -45,9 +45,22 @@ GO
 -- PHẦN 2: TẠO TẤT CẢ CÁC BẢNG (TABLES, CONSTRAINTS & INDEXES)
 -- =====================================================================================
 
--- 2.1 Nhân viên
-IF OBJECT_ID('TaiKhoanNhanVien', 'U') IS NOT NULL DROP TABLE TaiKhoanNhanVien;
+-- 2.1 Tài khoản đăng nhập (Admin / Lễ tân)
 IF OBJECT_ID('TaiKhoan', 'U') IS NOT NULL DROP TABLE TaiKhoan;
+CREATE TABLE TaiKhoan (
+    Id              INT IDENTITY(1,1) PRIMARY KEY,
+    TenDangNhap     NVARCHAR(50)  NOT NULL UNIQUE,
+    MatKhauHash     NVARCHAR(255) NOT NULL,
+    HoTen           NVARCHAR(100) NOT NULL,
+    VaiTro          NVARCHAR(20)  NOT NULL CHECK (VaiTro IN (N'Admin', N'LeTan')),
+    SoDienThoai     NVARCHAR(20)  NULL,
+    Email           NVARCHAR(100) NULL,
+    TrangThai       BIT NOT NULL DEFAULT 1,
+    NgayTao         DATETIME NOT NULL DEFAULT GETDATE()
+);
+GO
+
+-- 2.2 Nhân viên & Ca trực
 IF OBJECT_ID('NhanVien', 'U') IS NOT NULL DROP TABLE NhanVien;
 CREATE TABLE NhanVien (
     Id              INT IDENTITY(1,1) PRIMARY KEY,
@@ -59,33 +72,7 @@ CREATE TABLE NhanVien (
     ChucVu          NVARCHAR(50)  NOT NULL,
     LuongCoBan      DECIMAL(18,2) NOT NULL DEFAULT 0 CHECK (LuongCoBan >= 0),
     TrangThai       NVARCHAR(30)  NOT NULL DEFAULT N'Đang làm việc'
-                        CHECK (TrangThai IN (N'Đang làm việc', N'Nghỉ phép', N'Đã nghỉ việc', N'Đã nghỉ'))
-);
-GO
-
--- 2.2 Tài khoản đăng nhập hệ thống (Admin / Lễ tân)
-CREATE TABLE TaiKhoan (
-    Id              INT IDENTITY(1,1) PRIMARY KEY,
-    TenDangNhap     NVARCHAR(50)  NOT NULL UNIQUE,
-    MatKhauHash     NVARCHAR(255) NOT NULL,
-    HoTen           NVARCHAR(100) NOT NULL,
-    VaiTro          NVARCHAR(20)  NOT NULL CHECK (VaiTro IN (N'Admin', N'LeTan')),
-    SoDienThoai     NVARCHAR(20)  NULL,
-    Email           NVARCHAR(100) NULL,
-    TrangThai       BIT NOT NULL DEFAULT 1,
-    NhanVienId      INT NULL FOREIGN KEY REFERENCES NhanVien(Id) ON DELETE SET NULL,
-    NgayTao         DATETIME NOT NULL DEFAULT GETDATE()
-);
-GO
-
--- 2.3 Bảng Tài khoản Nhân viên (Quản lý tài khoản cấp tự động cho từng nhân sự)
-CREATE TABLE TaiKhoanNhanVien (
-    Id              INT IDENTITY(1,1) PRIMARY KEY,
-    NhanVienId      INT NOT NULL UNIQUE FOREIGN KEY REFERENCES NhanVien(Id) ON DELETE CASCADE,
-    TenDangNhap     NVARCHAR(50)  NOT NULL UNIQUE,
-    MatKhauHash     NVARCHAR(255) NOT NULL,
-    TrangThai       BIT NOT NULL DEFAULT 1,
-    NgayTao         DATETIME NOT NULL DEFAULT GETDATE()
+                        CHECK (TrangThai IN (N'Đang làm việc', N'Nghỉ phép', N'Đã nghỉ'))
 );
 GO
 
@@ -243,8 +230,7 @@ CREATE TABLE PhieuNhapKho (
     NguoiNhapId     INT           NOT NULL FOREIGN KEY REFERENCES NhanVien(Id),
     NgayNhap        DATETIME      NOT NULL DEFAULT GETDATE(),
     TongTien        DECIMAL(18,2) NOT NULL DEFAULT 0 CHECK (TongTien >= 0),
-    GhiChu          NVARCHAR(255) NULL,
-    DuongDanFileExcel NVARCHAR(500) NULL
+    GhiChu          NVARCHAR(255) NULL
 );
 GO
 
@@ -283,8 +269,6 @@ CREATE TABLE DonHangMonAn (
     GhiChu              NVARCHAR(255) NULL,
     NguoiTaoId          INT NOT NULL FOREIGN KEY REFERENCES NhanVien(Id),
     NguoiThanhToanId    INT NULL     FOREIGN KEY REFERENCES NhanVien(Id),
-    NguoiLap            NVARCHAR(100) NULL,
-    NguoiThu            NVARCHAR(100) NULL,
     ThoiGianThanhToan   DATETIME NULL,
     NgayTao             DATETIME NOT NULL DEFAULT GETDATE(),
     TrangThai           NVARCHAR(30) NOT NULL DEFAULT N'Đã giao'
@@ -346,7 +330,7 @@ CREATE TABLE DonDatSuKien (
     ChiPhiPhatSinh          DECIMAL(18,2) NOT NULL DEFAULT 0 CHECK (ChiPhiPhatSinh >= 0),
     DaThanhToan             BIT NOT NULL DEFAULT 0,
     GhiChuHuHai             NVARCHAR(500) NULL,
-    HinhThucThanhToanBanDau NVARCHAR(50) NOT NULL DEFAULT N'Đặt cọc trước'
+    HinhThucThanhToanBanDau NVARCHAR(20) NOT NULL DEFAULT N'Đặt cọc trước'
                                 CHECK (HinhThucThanhToanBanDau IN (N'Đặt cọc trước', N'Thanh toán toàn bộ')),
     TrangThaiDon            NVARCHAR(30) NOT NULL DEFAULT N'Đã đặt'
                                 CHECK (TrangThaiDon IN (
@@ -358,8 +342,6 @@ CREATE TABLE DonDatSuKien (
     SoTienHoanCoc           DECIMAL(18,2) NULL,
     NguoiTaoId              INT NOT NULL FOREIGN KEY REFERENCES NhanVien(Id),
     NguoiThanhToanId        INT NULL     FOREIGN KEY REFERENCES NhanVien(Id),
-    NguoiLap                NVARCHAR(100) NULL,
-    NguoiThu                NVARCHAR(100) NULL,
     ThoiGianThanhToan       DATETIME NULL,
     NgayTao                 DATETIME NOT NULL DEFAULT GETDATE(),
     CONSTRAINT CK_SuKien_ThoiGian CHECK (ThoiGianKetThuc > ThoiGianBatDau),
@@ -419,7 +401,7 @@ CREATE TABLE DonThueXe (
     DaThanhToan             BIT NOT NULL DEFAULT 0,
     GhiChuKhiNhanXe         NVARCHAR(500) NULL,
     GhiChuHuHai             NVARCHAR(500) NULL,
-    HinhThucThanhToanBanDau NVARCHAR(50) NOT NULL DEFAULT N'Đặt cọc trước'
+    HinhThucThanhToanBanDau NVARCHAR(20) NOT NULL DEFAULT N'Đặt cọc trước'
                                 CHECK (HinhThucThanhToanBanDau IN (N'Đặt cọc trước', N'Thanh toán toàn bộ')),
     TrangThaiDon            NVARCHAR(30) NOT NULL DEFAULT N'Đã đặt'
                                 CHECK (TrangThaiDon IN (
@@ -431,8 +413,6 @@ CREATE TABLE DonThueXe (
     SoTienHoanCoc           DECIMAL(18,2) NULL,
     NguoiTaoId              INT NOT NULL FOREIGN KEY REFERENCES NhanVien(Id),
     NguoiThanhToanId        INT NULL     FOREIGN KEY REFERENCES NhanVien(Id),
-    NguoiLap                NVARCHAR(100) NULL,
-    NguoiThu                NVARCHAR(100) NULL,
     ThoiGianThanhToan       DATETIME NULL,
     NgayTao                 DATETIME NOT NULL DEFAULT GETDATE(),
     CONSTRAINT CK_ThueXe_NgayTra CHECK (NgayTraDuKien > NgayThue),
@@ -472,8 +452,6 @@ CREATE TABLE BaiDoXe (
     GhiChuSuaChua       NVARCHAR(255) NULL,
     NguoiTaoId          INT NOT NULL FOREIGN KEY REFERENCES NhanVien(Id),
     NguoiThanhToanId    INT NULL     FOREIGN KEY REFERENCES NhanVien(Id),
-    NguoiLap            NVARCHAR(100) NULL,
-    NguoiThu            NVARCHAR(100) NULL,
     ThoiGianThanhToan   DATETIME NULL,
     CONSTRAINT CK_BaiDoXe_ThoiGian CHECK (ThoiGianRa IS NULL OR ThoiGianRa >= ThoiGianVao),
     CONSTRAINT CK_BaiDoXe_XacNhanTT CHECK (
@@ -551,8 +529,6 @@ CREATE TABLE DonGiatUi (
     DaThanhToan             BIT NOT NULL DEFAULT 0,
     NguoiTaoId              INT NOT NULL FOREIGN KEY REFERENCES NhanVien(Id),
     NguoiThanhToanId        INT NULL     FOREIGN KEY REFERENCES NhanVien(Id),
-    NguoiLap                NVARCHAR(100) NULL,
-    NguoiThu                NVARCHAR(100) NULL,
     ThoiGianThanhToan       DATETIME NULL,
     DaThanhToanChoDoiTac    BIT NOT NULL DEFAULT 0,
     NgayThanhToanChoDoiTac  DATETIME NULL,

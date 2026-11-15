@@ -99,34 +99,19 @@ namespace QuanLyDichVuKhachSan.Views
             TxtPhoneAndCccd.Text = !string.IsNullOrWhiteSpace(trans.PhoneNumber) ? trans.PhoneNumber : trans.ServiceCategory;
             TxtRoomNumber.Text = trans.RoomDisplay;
             TxtInvoiceDate.Text = trans.PaymentTime.ToString("dd/MM/yyyy HH:mm");
-            TxtCreatorStaff.Text = !string.IsNullOrWhiteSpace(trans.CreatedBy) ? trans.CreatedBy : DataService.AdminDisplayName;
-            TxtCashierStaff.Text = !string.IsNullOrWhiteSpace(trans.PaidBy) ? trans.PaidBy : TxtCreatorStaff.Text;
+            TxtCreatorStaff.Text = !string.IsNullOrWhiteSpace(trans.CreatedBy) ? trans.CreatedBy : "Chủ khách sạn (Admin)";
+            TxtCashierStaff.Text = !string.IsNullOrWhiteSpace(trans.PaidBy) ? trans.PaidBy : "Chủ khách sạn (Admin)";
             TxtGrandTotal.Text = $"{trans.Amount:N0} đ";
 
-            if (trans.OriginalObject is RoomInvoice roomInv)
+            if (trans.OriginalObject is RoomInvoice roomInv && roomInv.PaidItems.Count > 0)
             {
-                var roomItems = new List<InvoiceDisplayItem>();
-                if (roomInv.RoomCost > 0)
+                DgInvoiceItems.ItemsSource = roomInv.PaidItems.Select(x => new InvoiceDisplayItem
                 {
-                    roomItems.Add(new InvoiceDisplayItem
-                    {
-                        ServiceCategory = "Tiền phòng",
-                        ServiceName = $"{roomInv.StayNights} đêm × {roomInv.PricePerNight:N0} đ/đêm (P.{roomInv.RoomNumber})",
-                        UsedTime = roomInv.CheckInDate ?? roomInv.InvoiceDate,
-                        Amount = roomInv.RoomCost
-                    });
-                }
-                else if (roomInv.PaidItems.Count > 0)
-                {
-                    roomItems.AddRange(roomInv.PaidItems.Select(x => new InvoiceDisplayItem
-                    {
-                        ServiceCategory = x.ServiceCategory,
-                        ServiceName = x.ServiceName,
-                        UsedTime = x.UsedTime,
-                        Amount = x.Amount
-                    }));
-                }
-                DgInvoiceItems.ItemsSource = roomItems;
+                    ServiceCategory = x.ServiceCategory,
+                    ServiceName = x.ServiceName,
+                    UsedTime = x.UsedTime,
+                    Amount = x.Amount
+                }).ToList();
             }
             else if (trans.OriginalObject is FoodOrder foodOrder && foodOrder.Items.Count > 0)
             {
@@ -140,46 +125,28 @@ namespace QuanLyDichVuKhachSan.Views
             }
             else if (trans.OriginalObject is VehicleRental vr)
             {
-                if (!vr.DaThanhToan && vr.DepositAmount > 0)
+                int days = Math.Max(1, (int)(vr.ExpectedReturnDate - vr.RentalDate).TotalDays);
+                var items = new List<InvoiceDisplayItem>
                 {
-                    DgInvoiceItems.ItemsSource = new List<InvoiceDisplayItem>
+                    new()
                     {
-                        new()
-                        {
-                            ServiceCategory = "Thuê xe máy",
-                            ServiceName = vr.OrderStatus == "Đã hủy - Không hoàn cọc"
-                                ? $"Thu giữ tiền cọc thuê xe {vr.VehicleName} (BS: {vr.LicensePlate})"
-                                : $"Thu tiền cọc thuê xe {vr.VehicleName} (BS: {vr.LicensePlate})",
-                            UsedTime = vr.CreatedAt,
-                            Amount = vr.DepositAmount
-                        }
-                    };
-                }
-                else
-                {
-                    int days = Math.Max(1, (int)(vr.ExpectedReturnDate - vr.RentalDate).TotalDays);
-                    var items = new List<InvoiceDisplayItem>
-                    {
-                        new()
-                        {
-                            ServiceCategory = "Thuê xe máy",
-                            ServiceName = $"Thuê xe {vr.VehicleName} (BS: {vr.LicensePlate}) - {days} ngày",
-                            UsedTime = vr.RentalDate,
-                            Amount = vr.RentalFee
-                        }
-                    };
-                    if (vr.AdditionalCost > 0)
-                    {
-                        items.Add(new InvoiceDisplayItem
-                        {
-                            ServiceCategory = "Thuê xe máy",
-                            ServiceName = "Chi phí phát sinh / Phụ thu",
-                            UsedTime = vr.ActualReturnDate ?? vr.RentalDate,
-                            Amount = vr.AdditionalCost
-                        });
+                        ServiceCategory = "Thuê xe máy",
+                        ServiceName = $"Thuê xe {vr.VehicleName} (BS: {vr.LicensePlate}) - {days} ngày",
+                        UsedTime = vr.RentalDate,
+                        Amount = vr.RentalFee
                     }
-                    DgInvoiceItems.ItemsSource = items;
+                };
+                if (vr.AdditionalCost > 0)
+                {
+                    items.Add(new InvoiceDisplayItem
+                    {
+                        ServiceCategory = "Thuê xe máy",
+                        ServiceName = "Chi phí phát sinh / Phụ thu",
+                        UsedTime = vr.ActualReturnDate ?? vr.RentalDate,
+                        Amount = vr.AdditionalCost
+                    });
                 }
+                DgInvoiceItems.ItemsSource = items;
             }
             else if (trans.OriginalObject is ParkingRecord pr)
             {
@@ -196,7 +163,7 @@ namespace QuanLyDichVuKhachSan.Views
             }
             else if (trans.OriginalObject is LaundryOrder lo)
             {
-                var items = new List<InvoiceDisplayItem>
+                DgInvoiceItems.ItemsSource = new List<InvoiceDisplayItem>
                 {
                     new()
                     {
@@ -206,59 +173,19 @@ namespace QuanLyDichVuKhachSan.Views
                         Amount = lo.TotalPrice
                     }
                 };
-                if (lo.ChiPhiPhatSinh > 0)
-                {
-                    items.Add(new InvoiceDisplayItem
-                    {
-                        ServiceCategory = "Giặt ủi",
-                        ServiceName = "Chi phí phát sinh giặt ủi",
-                        UsedTime = lo.ActualReturnDate ?? lo.ReceivedDate,
-                        Amount = lo.ChiPhiPhatSinh
-                    });
-                }
-                DgInvoiceItems.ItemsSource = items;
             }
             else if (trans.OriginalObject is EventBooking eb)
             {
-                if (!eb.DaThanhToan && eb.DepositAmount > 0)
+                DgInvoiceItems.ItemsSource = new List<InvoiceDisplayItem>
                 {
-                    DgInvoiceItems.ItemsSource = new List<InvoiceDisplayItem>
+                    new()
                     {
-                        new()
-                        {
-                            ServiceCategory = "Sự kiện",
-                            ServiceName = eb.OrderStatus == "Đã hủy - Không hoàn cọc"
-                                ? $"Thu giữ tiền cọc đặt {eb.SpaceName} ({eb.StartTime:dd/MM HH:mm} - {eb.EndTime:dd/MM HH:mm})"
-                                : $"Thu tiền cọc đặt {eb.SpaceName} ({eb.StartTime:dd/MM HH:mm} - {eb.EndTime:dd/MM HH:mm})",
-                            UsedTime = eb.CreatedAt,
-                            Amount = eb.DepositAmount
-                        }
-                    };
-                }
-                else
-                {
-                    var items = new List<InvoiceDisplayItem>
-                    {
-                        new()
-                        {
-                            ServiceCategory = "Sự kiện",
-                            ServiceName = $"Thuê {eb.SpaceName} ({eb.StartTime:dd/MM HH:mm} - {eb.EndTime:dd/MM HH:mm})",
-                            UsedTime = eb.StartTime,
-                            Amount = eb.TotalEstimatedAmount
-                        }
-                    };
-                    if (eb.AdditionalCost > 0)
-                    {
-                        items.Add(new InvoiceDisplayItem
-                        {
-                            ServiceCategory = "Sự kiện",
-                            ServiceName = "Chi phí phát sinh / Phụ thu sự kiện",
-                            UsedTime = eb.EndTime,
-                            Amount = eb.AdditionalCost
-                        });
+                        ServiceCategory = "Sự kiện",
+                        ServiceName = $"Thuê {eb.SpaceName} ({eb.StartTime:dd/MM HH:mm} - {eb.EndTime:dd/MM HH:mm})",
+                        UsedTime = eb.StartTime,
+                        Amount = eb.PaymentStatus == "Hoàn tất" ? eb.FinalTotal : eb.DepositAmount
                     }
-                    DgInvoiceItems.ItemsSource = items;
-                }
+                };
             }
             else
             {
@@ -279,7 +206,7 @@ namespace QuanLyDichVuKhachSan.Views
         {
             if (invoice == null) return;
 
-            string defaultStaff = DataService.Instance.GetCurrentActorName();
+            string defaultStaff = DataService.Instance.GetCurrentDutyStaffName(invoice.InvoiceDate);
             string creator = !string.IsNullOrWhiteSpace(invoice.IssuedBy) && invoice.IssuedBy != "Lễ Tân Trực Chính" 
                 ? invoice.IssuedBy 
                 : defaultStaff;
@@ -320,19 +247,6 @@ namespace QuanLyDichVuKhachSan.Views
             DgInvoiceItems.ItemsSource = items;
         }
 
-        private static string ResolveCreator(string? recordedBy, int nguoiTaoId, DateTime atTime)
-        {
-            string? cleaned = recordedBy == "Lễ Tân Trực Chính" ? null : recordedBy;
-            return DataService.Instance.ResolveHistoricalActorName(cleaned, nguoiTaoId, atTime);
-        }
-
-        private static string ResolvePaidCashier(string? paidByStaffName, int? nguoiThanhToanId, string? fallbackCreator, DateTime payTime)
-        {
-            if (!string.IsNullOrWhiteSpace(paidByStaffName)) return paidByStaffName;
-            if (nguoiThanhToanId.HasValue) return DataService.Instance.ResolveHistoricalActorName(null, nguoiThanhToanId.Value, payTime);
-            return !string.IsNullOrWhiteSpace(fallbackCreator) ? fallbackCreator : DataService.Instance.GetScheduledDutyStaffName(payTime);
-        }
-
         private void LoadServiceItemData(RoomServiceUsageItem item, HotelRoom? room)
         {
             string roomNum = !string.IsNullOrEmpty(item.RoomNumber) ? item.RoomNumber : (room?.RoomNumber ?? "");
@@ -341,10 +255,10 @@ namespace QuanLyDichVuKhachSan.Views
             
             string creator = !string.IsNullOrWhiteSpace(item.RecordedBy)
                 ? item.RecordedBy
-                : DataService.Instance.GetScheduledDutyStaffName(item.UsedTime);
+                : (AuthService.Instance.IsAdmin ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(item.UsedTime));
 
             string cashier = item.IsPaid 
-                ? (!string.IsNullOrWhiteSpace(item.PaidBy) ? item.PaidBy : creator)
+                ? (!string.IsNullOrWhiteSpace(item.PaidBy) ? item.PaidBy : (!string.IsNullOrWhiteSpace(item.RecordedBy) ? item.RecordedBy : (AuthService.Instance.IsAdmin ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(item.UsedTime))))
                 : "";
 
             TxtInvoiceCode.Text = $"HD-DV-{item.Id:D4}";
@@ -371,14 +285,16 @@ namespace QuanLyDichVuKhachSan.Views
         private void LoadFoodOrderData(FoodOrder order)
         {
             string roomStr = string.IsNullOrWhiteSpace(order.RoomNumber) ? "Khách vãng lai" : $"Phòng {DataService.NormalizeRoomNumber(order.RoomNumber)}";
-            string creator = ResolveCreator(order.RecordedBy, order.NguoiTaoId, order.CreatedAt);
+            string creator = !string.IsNullOrWhiteSpace(order.RecordedBy) && order.RecordedBy != "Lễ Tân Trực Chính"
+                ? order.RecordedBy 
+                : (order.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(order.CreatedAt));
 
-            // Nếu tính chung vào tiền phòng và chưa thanh toán -> Thu ngân để trống / ghi chú chờ Check-out
+            // Nếu tính chung vào tiền phòng và chưa thanh toán -> Người thu tiền: để trống
             string cashier = (order.PaymentType == FoodPaymentType.RoomBill || order.PaymentType == FoodPaymentType.AddToRoomBill) && !order.DaThanhToan
-                ? "Ghi nợ phòng (Chờ thanh toán khi Check-out)"
-                : (order.DaThanhToan
-                    ? ResolvePaidCashier(order.PaidByStaffName, order.NguoiThanhToanId, creator, order.ThoiGianThanhToan ?? order.CreatedAt)
-                    : "");
+                ? ""
+                : (!string.IsNullOrWhiteSpace(order.PaidByStaffName)
+                    ? order.PaidByStaffName 
+                    : (!string.IsNullOrWhiteSpace(order.RecordedBy) ? order.RecordedBy : (order.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(order.ThoiGianThanhToan ?? order.CreatedAt))));
 
             TxtInvoiceCode.Text = order.OrderCode;
             TxtCustomerName.Text = !string.IsNullOrWhiteSpace(order.CustomerName) ? order.CustomerName : "Khách hàng";
@@ -420,25 +336,15 @@ namespace QuanLyDichVuKhachSan.Views
         private void LoadVehicleRentalData(VehicleRental rental)
         {
             string roomStr = string.IsNullOrWhiteSpace(rental.RoomNumber) ? "Khách ngoài" : $"Phòng {DataService.NormalizeRoomNumber(rental.RoomNumber)}";
-            string creator = ResolveCreator(rental.RecordedBy, rental.NguoiTaoId, rental.CreatedAt);
+            string creator = !string.IsNullOrWhiteSpace(rental.RecordedBy) && rental.RecordedBy != "Lễ Tân Trực Chính"
+                ? rental.RecordedBy 
+                : (rental.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(rental.RentalDate));
 
-            string cashier;
-            if (!rental.DaThanhToan && rental.PaymentStatus == "Ghi nợ vào phòng")
-            {
-                cashier = "Ghi nợ phòng (Chờ thanh toán khi Check-out)";
-            }
-            else if (rental.DaThanhToan)
-            {
-                cashier = ResolvePaidCashier(rental.PaidByStaffName, rental.NguoiThanhToanId, creator, rental.ThoiGianThanhToan ?? rental.ActualReturnDate ?? rental.RentalDate);
-            }
-            else if (rental.DepositAmount > 0)
-            {
-                cashier = creator; // Người tiếp nhận thu tiền cọc lúc lập đơn
-            }
-            else
-            {
-                cashier = !string.IsNullOrWhiteSpace(rental.RoomNumber) ? "Ghi nợ phòng (Chờ thanh toán khi Check-out)" : "";
-            }
+            string cashier = !rental.DaThanhToan && !string.IsNullOrWhiteSpace(rental.RoomNumber)
+                ? ""
+                : (!string.IsNullOrWhiteSpace(rental.PaidByStaffName)
+                    ? rental.PaidByStaffName
+                    : (!string.IsNullOrWhiteSpace(rental.RecordedBy) ? rental.RecordedBy : (rental.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(rental.ThoiGianThanhToan ?? rental.ActualReturnDate ?? rental.RentalDate))));
 
             TxtInvoiceCode.Text = rental.RentalCode;
             TxtCustomerName.Text = !string.IsNullOrWhiteSpace(rental.CustomerName) ? rental.CustomerName : "Khách thuê xe";
@@ -446,7 +352,9 @@ namespace QuanLyDichVuKhachSan.Views
             TxtRoomNumber.Text = roomStr;
             TxtInvoiceDate.Text = rental.RentalDate.ToString("dd/MM/yyyy HH:mm");
             TxtCreatorStaff.Text = creator;
-            TxtCashierStaff.Text = cashier;
+            TxtCashierStaff.Text = (!rental.DaThanhToan && (rental.PaymentStatus == "Ghi nợ vào phòng" || !string.IsNullOrWhiteSpace(rental.RoomNumber)))
+                ? "Ghi nợ phòng (Chờ thanh toán khi Check-out)"
+                : cashier;
 
             int days = Math.Max(1, (int)(rental.ExpectedReturnDate - rental.RentalDate).TotalDays);
             var items = new List<InvoiceDisplayItem>
@@ -497,25 +405,15 @@ namespace QuanLyDichVuKhachSan.Views
         private void LoadEventBookingData(EventBooking booking)
         {
             string roomStr = string.IsNullOrWhiteSpace(booking.RoomNumber) ? "Khách ngoài" : $"Phòng {DataService.NormalizeRoomNumber(booking.RoomNumber)}";
-            string creator = ResolveCreator(booking.RecordedBy, booking.NguoiTaoId, booking.CreatedAt);
+            string creator = !string.IsNullOrWhiteSpace(booking.RecordedBy) && booking.RecordedBy != "Lễ Tân Trực Chính"
+                ? booking.RecordedBy 
+                : (booking.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(booking.CreatedAt));
 
-            string cashier;
-            if (!booking.DaThanhToan && booking.PaymentStatus == "Ghi nợ vào phòng")
-            {
-                cashier = "Ghi nợ phòng (Chờ thanh toán khi Check-out)";
-            }
-            else if (booking.DaThanhToan)
-            {
-                cashier = ResolvePaidCashier(booking.PaidByStaffName, booking.NguoiThanhToanId, creator, booking.ThoiGianThanhToan ?? booking.EndTime);
-            }
-            else if (booking.DepositAmount > 0)
-            {
-                cashier = creator; // Người tiếp nhận thu tiền cọc lúc đặt sảnh
-            }
-            else
-            {
-                cashier = !string.IsNullOrWhiteSpace(booking.RoomNumber) ? "Ghi nợ phòng (Chờ thanh toán khi Check-out)" : "";
-            }
+            string cashier = (booking.PaymentStatus == "Ghi nợ vào phòng" || (!booking.DaThanhToan && !string.IsNullOrWhiteSpace(booking.RoomNumber)))
+                ? "Ghi nợ phòng (Chờ thanh toán khi Check-out)"
+                : (!string.IsNullOrWhiteSpace(booking.PaidByStaffName)
+                    ? booking.PaidByStaffName
+                    : (!string.IsNullOrWhiteSpace(booking.RecordedBy) ? booking.RecordedBy : (booking.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(booking.ThoiGianThanhToan ?? booking.EndTime))));
 
             TxtInvoiceCode.Text = booking.BookingCode;
             TxtCustomerName.Text = !string.IsNullOrWhiteSpace(booking.CustomerName) ? booking.CustomerName : "Khách đặt sự kiện";
@@ -575,13 +473,15 @@ namespace QuanLyDichVuKhachSan.Views
         private void LoadLaundryOrderData(LaundryOrder order)
         {
             string roomStr = string.IsNullOrWhiteSpace(order.RoomNumber) ? "Khách vãng lai" : $"Phòng {DataService.NormalizeRoomNumber(order.RoomNumber)}";
-            string creator = ResolveCreator(order.RecordedBy, order.NguoiTaoId, order.ReceivedDate);
+            string creator = !string.IsNullOrWhiteSpace(order.RecordedBy) && order.RecordedBy != "Lễ Tân Trực Chính"
+                ? order.RecordedBy 
+                : (order.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(order.ReceivedDate));
 
             string cashier = !order.DaThanhToan && !string.IsNullOrWhiteSpace(order.RoomNumber)
-                ? "Ghi nợ phòng (Chờ thanh toán khi Check-out)"
-                : (order.DaThanhToan
-                    ? ResolvePaidCashier(order.PaidByStaffName, order.NguoiThanhToanId, creator, order.ThoiGianThanhToan ?? order.ReceivedDate)
-                    : "");
+                ? ""
+                : (!string.IsNullOrWhiteSpace(order.PaidByStaffName)
+                    ? order.PaidByStaffName
+                    : (!string.IsNullOrWhiteSpace(order.RecordedBy) ? order.RecordedBy : (order.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(order.ThoiGianThanhToan ?? order.ReceivedDate))));
 
             TxtInvoiceCode.Text = order.OrderCode;
             TxtCustomerName.Text = !string.IsNullOrWhiteSpace(order.CustomerName) ? order.CustomerName : "Khách gửi giặt";
@@ -607,12 +507,16 @@ namespace QuanLyDichVuKhachSan.Views
         private void LoadParkingRecordData(ParkingRecord record)
         {
             string roomStr = string.IsNullOrWhiteSpace(record.RoomNumber) ? "Khách vãng lai" : $"Phòng {DataService.NormalizeRoomNumber(record.RoomNumber)}";
-            string creator = ResolveCreator(record.RecordedBy, record.NguoiTaoId, record.CheckInTime);
+            string creator = !string.IsNullOrWhiteSpace(record.RecordedBy) && record.RecordedBy != "Lễ Tân Trực Chính"
+                ? record.RecordedBy 
+                : (record.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(record.CheckInTime));
 
             string cashier = record.ChargeType == ParkingChargeType.ResidentFree
                 ? "Miễn phí (Khách phòng)"
-                : (record.DaThanhToan
-                    ? ResolvePaidCashier(record.PaidByStaffName, record.NguoiThanhToanId, creator, record.ThoiGianThanhToan ?? record.CheckOutTime ?? record.CheckInTime)
+                : (record.DaThanhToan 
+                    ? (!string.IsNullOrWhiteSpace(record.PaidByStaffName)
+                        ? record.PaidByStaffName
+                        : (!string.IsNullOrWhiteSpace(record.RecordedBy) ? record.RecordedBy : (record.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : DataService.Instance.GetCurrentDutyStaffName(record.ThoiGianThanhToan ?? record.CheckInTime))))
                     : "");
 
             TxtInvoiceCode.Text = record.TicketCode;

@@ -622,158 +622,6 @@ namespace QuanLyDichVuKhachSan.Services
             catch { }
         }
 
-        private static bool _auditColumnsChecked = false;
-        private static readonly object _auditColumnsLock = new();
-        public static void EnsureTransactionAuditColumns(SqlConnection conn)
-        {
-            if (_auditColumnsChecked) return;
-            lock (_auditColumnsLock)
-            {
-                if (_auditColumnsChecked) return;
-                try
-                {
-                    string ddl = @"
-                        IF OBJECT_ID('DonHangMonAn', 'U') IS NOT NULL
-                        BEGIN
-                            IF COL_LENGTH('DonHangMonAn', 'NguoiLap') IS NULL ALTER TABLE DonHangMonAn ADD NguoiLap NVARCHAR(100) NULL;
-                            IF COL_LENGTH('DonHangMonAn', 'NguoiThu') IS NULL ALTER TABLE DonHangMonAn ADD NguoiThu NVARCHAR(100) NULL;
-                        END
-                        IF OBJECT_ID('DonDatSuKien', 'U') IS NOT NULL
-                        BEGIN
-                            IF COL_LENGTH('DonDatSuKien', 'NguoiLap') IS NULL ALTER TABLE DonDatSuKien ADD NguoiLap NVARCHAR(100) NULL;
-                            IF COL_LENGTH('DonDatSuKien', 'NguoiThu') IS NULL ALTER TABLE DonDatSuKien ADD NguoiThu NVARCHAR(100) NULL;
-                        END
-                        IF OBJECT_ID('DonThueXe', 'U') IS NOT NULL
-                        BEGIN
-                            IF COL_LENGTH('DonThueXe', 'NguoiLap') IS NULL ALTER TABLE DonThueXe ADD NguoiLap NVARCHAR(100) NULL;
-                            IF COL_LENGTH('DonThueXe', 'NguoiThu') IS NULL ALTER TABLE DonThueXe ADD NguoiThu NVARCHAR(100) NULL;
-                        END
-                        IF OBJECT_ID('BaiDoXe', 'U') IS NOT NULL
-                        BEGIN
-                            IF COL_LENGTH('BaiDoXe', 'NguoiLap') IS NULL ALTER TABLE BaiDoXe ADD NguoiLap NVARCHAR(100) NULL;
-                            IF COL_LENGTH('BaiDoXe', 'NguoiThu') IS NULL ALTER TABLE BaiDoXe ADD NguoiThu NVARCHAR(100) NULL;
-                        END
-                        IF OBJECT_ID('DonGiatUi', 'U') IS NOT NULL
-                        BEGIN
-                            IF COL_LENGTH('DonGiatUi', 'NguoiLap') IS NULL ALTER TABLE DonGiatUi ADD NguoiLap NVARCHAR(100) NULL;
-                            IF COL_LENGTH('DonGiatUi', 'NguoiThu') IS NULL ALTER TABLE DonGiatUi ADD NguoiThu NVARCHAR(100) NULL;
-                        END";
-                    using var cmd = new SqlCommand(ddl, conn);
-                    cmd.ExecuteNonQuery();
-                    _auditColumnsChecked = true;
-                }
-                catch { }
-            }
-        }
-
-        private static bool _tknvTableChecked = false;
-        private static readonly object _tknvTableLock = new();
-        public static void EnsureTaiKhoanNhanVienTable(SqlConnection conn)
-        {
-            if (_tknvTableChecked) return;
-            lock (_tknvTableLock)
-            {
-                if (_tknvTableChecked) return;
-                try
-                {
-                    string ddl = @"
-                        IF OBJECT_ID('TaiKhoanNhanVien', 'U') IS NULL
-                        BEGIN
-                            CREATE TABLE TaiKhoanNhanVien (
-                                Id              INT IDENTITY(1,1) PRIMARY KEY,
-                                NhanVienId      INT NOT NULL UNIQUE FOREIGN KEY REFERENCES NhanVien(Id) ON DELETE CASCADE,
-                                TenDangNhap     NVARCHAR(50)  NOT NULL UNIQUE,
-                                MatKhauHash     NVARCHAR(255) NOT NULL,
-                                TrangThai       BIT NOT NULL DEFAULT 1,
-                                NgayTao         DATETIME NOT NULL DEFAULT GETDATE()
-                            );
-                        END
-                        IF COL_LENGTH('TaiKhoan', 'NhanVienId') IS NULL
-                        BEGIN
-                            ALTER TABLE TaiKhoan ADD NhanVienId INT NULL FOREIGN KEY REFERENCES NhanVien(Id) ON DELETE SET NULL;
-                        END";
-                    using var cmd = new SqlCommand(ddl, conn);
-                    cmd.ExecuteNonQuery();
-                    _tknvTableChecked = true;
-                }
-                catch { }
-            }
-        }
-
-        public async Task<bool> CreateStaffAccountAsync(int staffId, string username, string plainPassword, string fullName, string phone, string email)
-        {
-            try
-            {
-                string passHash = Helpers.SecurityHelper.HashPassword(plainPassword);
-                using var conn = new SqlConnection(ConnectionString);
-                await conn.OpenAsync();
-                EnsureTaiKhoanNhanVienTable(conn);
-
-                string sql = @"
-                    -- 1. Lưu vào bảng TaiKhoanNhanVien
-                    IF EXISTS (SELECT 1 FROM TaiKhoanNhanVien WHERE NhanVienId = @NhanVienId)
-                    BEGIN
-                        UPDATE TaiKhoanNhanVien
-                        SET TenDangNhap = @User, MatKhauHash = @Hash, TrangThai = 1
-                        WHERE NhanVienId = @NhanVienId;
-                    END
-                    ELSE
-                    BEGIN
-                        INSERT INTO TaiKhoanNhanVien (NhanVienId, TenDangNhap, MatKhauHash, TrangThai)
-                        VALUES (@NhanVienId, @User, @Hash, 1);
-                    END
-
-                    -- 2. Đồng bộ vào bảng TaiKhoan để đăng nhập hệ thống
-                    IF EXISTS (SELECT 1 FROM TaiKhoan WHERE NhanVienId = @NhanVienId OR TenDangNhap = @User)
-                    BEGIN
-                        UPDATE TaiKhoan
-                        SET TenDangNhap = @User, MatKhauHash = @Hash, HoTen = @HoTen,
-                            SoDienThoai = @Phone, Email = @Email, TrangThai = 1, NhanVienId = @NhanVienId
-                        WHERE NhanVienId = @NhanVienId OR TenDangNhap = @User;
-                    END
-                    ELSE
-                    BEGIN
-                        INSERT INTO TaiKhoan (TenDangNhap, MatKhauHash, HoTen, VaiTro, SoDienThoai, Email, TrangThai, NhanVienId)
-                        VALUES (@User, @Hash, @HoTen, N'LeTan', @Phone, @Email, 1, @NhanVienId);
-                    END";
-
-                using var cmd = new SqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@NhanVienId", staffId);
-                cmd.Parameters.AddWithValue("@User", username);
-                cmd.Parameters.AddWithValue("@Hash", passHash);
-                cmd.Parameters.AddWithValue("@HoTen", fullName);
-                cmd.Parameters.AddWithValue("@Phone", (object?)phone ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@Email", (object?)email ?? DBNull.Value);
-
-                await cmd.ExecuteNonQueryAsync();
-                return true;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[SQL Error] CreateStaffAccountAsync: {ex.Message}");
-                return false;
-            }
-        }
-
-        private static (string CreatorName, string CashierName) ReadActorLabels(
-            SqlDataReader reader, int creatorId, int? payerId, bool isPaid)
-        {
-            string creator = SafeGetString(reader, "NguoiLap");
-            if (string.IsNullOrWhiteSpace(creator)) creator = SafeGetString(reader, "TenNguoiTao");
-            if (string.IsNullOrWhiteSpace(creator) && creatorId == 0) creator = "Chủ khách sạn (Admin)";
-
-            string cashier = "";
-            if (isPaid)
-            {
-                cashier = SafeGetString(reader, "NguoiThu");
-                if (string.IsNullOrWhiteSpace(cashier)) cashier = SafeGetString(reader, "TenNguoiThanhToan");
-                if (string.IsNullOrWhiteSpace(cashier) && payerId == 0) cashier = "Chủ khách sạn (Admin)";
-                if (string.IsNullOrWhiteSpace(cashier) && !string.IsNullOrWhiteSpace(creator)) cashier = creator;
-            }
-
-            return (creator, cashier);
-        }
-
         /// <summary>
         /// Đọc toàn bộ danh sách Hàng hóa mini-bar từ CSDL SQL Server (Table MonAn)
         /// </summary>
@@ -847,32 +695,10 @@ namespace QuanLyDichVuKhachSan.Services
             return list;
         }
 
-        private static bool _phieuNhapKhoColumnsChecked = false;
-        private static readonly object _phieuNhapKhoColumnsLock = new();
-        private static void EnsurePhieuNhapKhoColumnsExist(SqlConnection conn)
-        {
-            if (_phieuNhapKhoColumnsChecked) return;
-
-            lock (_phieuNhapKhoColumnsLock)
-            {
-                if (_phieuNhapKhoColumnsChecked) return;
-                try
-                {
-                    string ddl = @"
-                        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PhieuNhapKho' AND COLUMN_NAME = 'DuongDanFileExcel')
-                            ALTER TABLE PhieuNhapKho ADD DuongDanFileExcel NVARCHAR(500) NULL;";
-                    using var cmd = new SqlCommand(ddl, conn);
-                    cmd.ExecuteNonQuery();
-                    _phieuNhapKhoColumnsChecked = true;
-                }
-                catch { }
-            }
-        }
-
         /// <summary>
         /// Lập phiếu nhập kho nhiều dòng hàng thông qua Stored Procedure: sp_LapPhieuNhapKho (TVP kieu_ChiTietNhapKho)
         /// </summary>
-        public async Task<ReceiptSaveResult> LapPhieuNhapKhoAsync(string receiptCode, int supplierId, int staffId, string note, List<WarehouseReceiptDraftItem> items)
+        public async Task<int> LapPhieuNhapKhoAsync(string receiptCode, int supplierId, int staffId, string note, List<WarehouseReceiptDraftItem> items)
         {
             return await Task.Run(() =>
             {
@@ -880,7 +706,6 @@ namespace QuanLyDichVuKhachSan.Services
                 {
                     using var conn = new SqlConnection(ConnectionString);
                     conn.Open();
-                    EnsurePhieuNhapKhoColumnsExist(conn);
 
                     // 1. Kiểm tra và đảm bảo MaPhieuNhap là DUY NHẤT
                     string finalCode = receiptCode;
@@ -969,8 +794,7 @@ namespace QuanLyDichVuKhachSan.Services
                         cmd.Parameters.Add(outParam);
 
                         cmd.ExecuteNonQuery();
-                        if (outParam.Value is int id && id > 0)
-                            return new ReceiptSaveResult { ReceiptId = id, ReceiptCode = finalCode };
+                        if (outParam.Value is int id && id > 0) return id;
                     }
                     catch (Exception spEx)
                     {
@@ -1033,19 +857,19 @@ namespace QuanLyDichVuKhachSan.Services
                         }
 
                         tran.Commit();
-                        return new ReceiptSaveResult { ReceiptId = newReceiptId, ReceiptCode = finalCode };
+                        return newReceiptId;
                     }
                     catch (Exception tranEx)
                     {
                         tran.Rollback();
                         System.Diagnostics.Debug.WriteLine($"[Direct SQL Error]: {tranEx.Message}");
-                        return new ReceiptSaveResult();
+                        return -1;
                     }
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"[LapPhieuNhapKhoAsync Fatal Error]: {ex.Message}");
-                    return new ReceiptSaveResult();
+                    return -1;
                 }
             });
         }
@@ -1232,142 +1056,6 @@ namespace QuanLyDichVuKhachSan.Services
                 System.Diagnostics.Debug.WriteLine($"[SQL Error] LoadInventoryBatchesFromDb: {ex.Message}");
             }
             return list;
-        }
-
-        /// <summary>
-        /// Đọc danh sách phiếu nhập kho ở cấp header (dùng cho tab Lịch sử nhập kho).
-        /// </summary>
-        public async Task<List<InventoryReceipt>> LoadInventoryReceiptsFromDbAsync()
-        {
-            return await Task.Run(() =>
-            {
-                var list = new List<InventoryReceipt>();
-                try
-                {
-                    using var conn = new SqlConnection(ConnectionString);
-                    conn.Open();
-                    EnsurePhieuNhapKhoColumnsExist(conn);
-
-                    string query = @"
-                        SELECT 
-                            pn.Id,
-                            pn.MaPhieuNhap,
-                            pn.NgayNhap,
-                            ncc.TenNhaCungCap,
-                            ISNULL(nv.HoTen, N'') AS TenNguoiNhap,
-                            ISNULL(pn.GhiChu, N'') AS GhiChu,
-                            (SELECT COUNT(1) FROM ChiTietPhieuNhapKho ct WHERE ct.PhieuNhapId = pn.Id) AS SoDong,
-                            (SELECT ISNULL(SUM(ct.SoLuongNhap * ct.DonGiaNhap), 0) FROM ChiTietPhieuNhapKho ct WHERE ct.PhieuNhapId = pn.Id) AS TongTien,
-                            pn.DuongDanFileExcel
-                        FROM PhieuNhapKho pn
-                        JOIN NhaCungCap ncc ON ncc.Id = pn.NhaCungCapId
-                        LEFT JOIN NhanVien nv ON nv.Id = pn.NguoiNhapId
-                        ORDER BY pn.NgayNhap DESC, pn.Id DESC";
-
-                    using var cmd = new SqlCommand(query, conn);
-                    using var reader = cmd.ExecuteReader();
-                    while (reader.Read())
-                    {
-                        list.Add(new InventoryReceipt
-                        {
-                            Id = SafeGetInt(reader, "Id"),
-                            ReceiptCode = SafeGetString(reader, "MaPhieuNhap"),
-                            ImportDate = SafeGetDateTime(reader, "NgayNhap"),
-                            Supplier = SafeGetString(reader, "TenNhaCungCap"),
-                            ImportedBy = SafeGetString(reader, "TenNguoiNhap"),
-                            Note = SafeGetString(reader, "GhiChu"),
-                            TotalItems = SafeGetInt(reader, "SoDong"),
-                            TotalCost = SafeGetDecimal(reader, "TongTien"),
-                            FileExcelPath = SafeGetString(reader, "DuongDanFileExcel")
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[SQL Error] LoadInventoryReceiptsFromDbAsync: {ex.Message}");
-                }
-                return list;
-            });
-        }
-
-        /// <summary>
-        /// Lấy nhà cung cấp theo tên; nếu chưa tồn tại thì tự tạo mới.
-        /// </summary>
-        public async Task<Supplier> GetOrCreateSupplierAsync(string supplierName)
-        {
-            return await Task.Run(() =>
-            {
-                string name = (supplierName ?? string.Empty).Trim();
-                if (name.Length > 100) name = name[..100];
-
-                var supplier = new Supplier { Name = name };
-                if (string.IsNullOrWhiteSpace(name)) return supplier;
-
-                try
-                {
-                    using var conn = new SqlConnection(ConnectionString);
-                    conn.Open();
-
-                    using (var findCmd = new SqlCommand(
-                        "SELECT TOP 1 Id, TenNhaCungCap, NguoiLienHe, SoDienThoai, DiaChi, GhiChu, TrangThai " +
-                        "FROM NhaCungCap WHERE TenNhaCungCap = @Name", conn))
-                    {
-                        findCmd.Parameters.AddWithValue("@Name", name);
-                        using var reader = findCmd.ExecuteReader();
-                        if (reader.Read())
-                        {
-                            supplier.Id = SafeGetInt(reader, "Id");
-                            supplier.Name = SafeGetString(reader, "TenNhaCungCap");
-                            supplier.ContactPerson = SafeGetString(reader, "NguoiLienHe");
-                            supplier.PhoneNumber = SafeGetString(reader, "SoDienThoai");
-                            supplier.Address = SafeGetString(reader, "DiaChi");
-                            supplier.Note = SafeGetString(reader, "GhiChu");
-                            supplier.IsActive = SafeGetBool(reader, "TrangThai");
-                            return supplier;
-                        }
-                    }
-
-                    using var insertCmd = new SqlCommand(@"
-                        INSERT INTO NhaCungCap (TenNhaCungCap, SoDienThoai, TrangThai)
-                        VALUES (@Name, N'', 1);
-                        SELECT CAST(SCOPE_IDENTITY() AS INT);", conn);
-                    insertCmd.Parameters.AddWithValue("@Name", name);
-                    supplier.Id = Convert.ToInt32(insertCmd.ExecuteScalar() ?? 0);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[SQL Error] GetOrCreateSupplierAsync: {ex.Message}");
-                }
-
-                return supplier;
-            });
-        }
-
-        /// <summary>
-        /// Cập nhật đường dẫn tương đối của file Excel lưu trữ cho phiếu nhập kho.
-        /// </summary>
-        public async Task<bool> UpdateReceiptExcelPathAsync(int receiptId, string relativePath)
-        {
-            return await Task.Run(() =>
-            {
-                try
-                {
-                    using var conn = new SqlConnection(ConnectionString);
-                    conn.Open();
-                    EnsurePhieuNhapKhoColumnsExist(conn);
-
-                    using var cmd = new SqlCommand(
-                        "UPDATE PhieuNhapKho SET DuongDanFileExcel = @Path WHERE Id = @Id", conn);
-                    cmd.Parameters.AddWithValue("@Path", string.IsNullOrWhiteSpace(relativePath) ? (object)DBNull.Value : relativePath);
-                    cmd.Parameters.AddWithValue("@Id", receiptId);
-                    return cmd.ExecuteNonQuery() > 0;
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[SQL Error] UpdateReceiptExcelPathAsync: {ex.Message}");
-                    return false;
-                }
-            });
         }
 
         public bool UpdateFoodDefaultQuota(int foodId, int defaultQuota, bool applyToday = false)
@@ -1964,12 +1652,7 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
-                EnsureTaiKhoanNhanVienTable(conn);
-                string query = @"
-                    SELECT nv.*, tknv.TenDangNhap, tknv.MatKhauHash 
-                    FROM NhanVien nv 
-                    LEFT JOIN TaiKhoanNhanVien tknv ON nv.Id = tknv.NhanVienId 
-                    ORDER BY nv.Id";
+                string query = "SELECT * FROM NhanVien ORDER BY Id";
                 using var cmd = new SqlCommand(query, conn);
                 using var reader = cmd.ExecuteReader();
                 int fallbackId = 1;
@@ -1995,10 +1678,6 @@ namespace QuanLyDichVuKhachSan.Services
                     string status = SafeGetString(reader, "TrangThai", "Status");
                     if (string.IsNullOrWhiteSpace(status)) status = "Đang làm việc";
 
-                    string username = SafeGetString(reader, "TenDangNhap");
-                    string passHash = SafeGetString(reader, "MatKhauHash");
-                    string plainPass = string.IsNullOrWhiteSpace(passHash) ? "123" : Helpers.SecurityHelper.DecodePasswordFromDb(passHash);
-
                     list.Add(new Staff
                     {
                         Id = id,
@@ -2009,9 +1688,7 @@ namespace QuanLyDichVuKhachSan.Services
                         Email = email,
                         Position = position,
                         BaseSalary = salary,
-                        Status = status,
-                        Username = username,
-                        Password = plainPass
+                        Status = status
                     });
                 }
             }
@@ -2252,7 +1929,6 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
-                EnsureTaiKhoanNhanVienTable(conn);
                 string query = "SELECT * FROM TaiKhoan ORDER BY Id";
                 using var cmd = new SqlCommand(query, conn);
                 using var reader = cmd.ExecuteReader();
@@ -2278,8 +1954,7 @@ namespace QuanLyDichVuKhachSan.Services
                         Role = role,
                         PhoneNumber = SafeGetString(reader, "SoDienThoai", "PhoneNumber", "SDT"),
                         Email = SafeGetString(reader, "Email"),
-                        IsActive = isActive,
-                        StaffId = SafeGetNullableInt(reader, "NhanVienId", "StaffId")
+                        IsActive = isActive
                     });
                 }
             }
@@ -2306,7 +1981,6 @@ namespace QuanLyDichVuKhachSan.Services
                 using (var conn = new SqlConnection(ConnectionString))
                 {
                     conn.Open();
-                    EnsureTransactionAuditColumns(conn);
                     string query = @"
                         SELECT dh.*, nv.HoTen AS TenNguoiTao, nvTT.HoTen AS TenNguoiThanhToan 
                         FROM DonHangMonAn dh 
@@ -2329,7 +2003,11 @@ namespace QuanLyDichVuKhachSan.Services
                         int creatorId = SafeGetInt(reader, "NguoiTaoId");
                         int? payerId = SafeGetNullableInt(reader, "NguoiThanhToanId");
                         DateTime? payerTime = SafeGetNullableDateTime(reader, "ThoiGianThanhToan");
-                        var (staff, payerStaff) = ReadActorLabels(reader, creatorId, payerId, daTT);
+                        string staff = SafeGetString(reader, "TenNguoiTao");
+                        if (string.IsNullOrWhiteSpace(staff) && creatorId == 0) staff = "Chủ khách sạn";
+                        string payerStaff = SafeGetString(reader, "TenNguoiThanhToan");
+                        if (string.IsNullOrWhiteSpace(payerStaff) && payerId == 0) payerStaff = "Chủ khách sạn";
+                        if (string.IsNullOrWhiteSpace(payerStaff) && daTT && !string.IsNullOrWhiteSpace(staff)) payerStaff = staff;
 
                         DateTime created = SafeGetDateTime(reader, "NgayTao");
                         string status = SafeGetString(reader, "TrangThai");
@@ -2403,7 +2081,6 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
-                EnsureTransactionAuditColumns(conn);
                 string query = @"
                     SELECT sk.*, kv.TenKhuVuc, nv.HoTen AS TenNguoiTao, nvTT.HoTen AS TenNguoiThanhToan 
                     FROM DonDatSuKien sk 
@@ -2425,8 +2102,12 @@ namespace QuanLyDichVuKhachSan.Services
 
                     int creatorId = SafeGetInt(reader, "NguoiTaoId");
                     int? payerId = SafeGetNullableInt(reader, "NguoiThanhToanId");
+                    string staff = SafeGetString(reader, "TenNguoiTao");
+                    if (string.IsNullOrWhiteSpace(staff) && creatorId == 0) staff = "Chủ khách sạn";
+                    string payerStaff = SafeGetString(reader, "TenNguoiThanhToan");
+                    if (string.IsNullOrWhiteSpace(payerStaff) && payerId == 0) payerStaff = "Chủ khách sạn";
                     bool daTT = SafeGetBool(reader, "DaThanhToan");
-                    var (staff, payerStaff) = ReadActorLabels(reader, creatorId, payerId, daTT);
+                    if (string.IsNullOrWhiteSpace(payerStaff) && daTT && !string.IsNullOrWhiteSpace(staff)) payerStaff = staff;
 
                     string initialPay = SafeGetString(reader, "HinhThucThanhToanBanDau");
                     string orderStatus = SafeGetString(reader, "TrangThaiDon");
@@ -2512,7 +2193,6 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
-                EnsureTransactionAuditColumns(conn);
                 string query = @"
                     SELECT tx.*, x.TenXe, x.BienSo AS BienSoXe, nv.HoTen AS TenNguoiTao, nvTT.HoTen AS TenNguoiThanhToan 
                     FROM DonThueXe tx 
@@ -2539,8 +2219,12 @@ namespace QuanLyDichVuKhachSan.Services
 
                     int creatorId = SafeGetInt(reader, "NguoiTaoId");
                     int? payerId = SafeGetNullableInt(reader, "NguoiThanhToanId");
+                    string staff = SafeGetString(reader, "TenNguoiTao");
+                    if (string.IsNullOrWhiteSpace(staff) && creatorId == 0) staff = "Chủ khách sạn";
+                    string payerStaff = SafeGetString(reader, "TenNguoiThanhToan");
+                    if (string.IsNullOrWhiteSpace(payerStaff) && payerId == 0) payerStaff = "Chủ khách sạn";
                     bool daTT = SafeGetBool(reader, "DaThanhToan");
-                    var (staff, payerStaff) = ReadActorLabels(reader, creatorId, payerId, daTT);
+                    if (string.IsNullOrWhiteSpace(payerStaff) && daTT && !string.IsNullOrWhiteSpace(staff)) payerStaff = staff;
 
                     string initialPay = SafeGetString(reader, "HinhThucThanhToanBanDau");
                     string orderStatus = SafeGetString(reader, "TrangThaiDon", "TrangThai");
@@ -2626,7 +2310,6 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
-                EnsureTransactionAuditColumns(conn);
                 string query = @"
                     SELECT bx.*, nv.HoTen AS TenNguoiTao, nvTT.HoTen AS TenNguoiThanhToan 
                     FROM BaiDoXe bx 
@@ -2658,8 +2341,12 @@ namespace QuanLyDichVuKhachSan.Services
 
                     int creatorId = SafeGetInt(reader, "NguoiTaoId");
                     int? payerId = SafeGetNullableInt(reader, "NguoiThanhToanId");
+                    string staff = SafeGetString(reader, "TenNguoiTao");
+                    if (string.IsNullOrWhiteSpace(staff) && creatorId == 0) staff = "Chủ khách sạn";
+                    string payerStaff = SafeGetString(reader, "TenNguoiThanhToan");
+                    if (string.IsNullOrWhiteSpace(payerStaff) && payerId == 0) payerStaff = "Chủ khách sạn";
                     bool daTT = SafeGetBool(reader, "DaThanhToan");
-                    var (staff, payerStaff) = ReadActorLabels(reader, creatorId, payerId, daTT);
+                    if (string.IsNullOrWhiteSpace(payerStaff) && daTT && !string.IsNullOrWhiteSpace(staff)) payerStaff = staff;
 
                     list.Add(new ParkingRecord
                     {
@@ -2701,7 +2388,6 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
-                EnsureTransactionAuditColumns(conn);
                 string query = @"
                     SELECT gu.*, dt.TenDoiTac, ldv.Id AS ServiceTypeId,
                            nv.HoTen AS TenNguoiTao, nvTT.HoTen AS TenNguoiThanhToan 
@@ -2738,8 +2424,12 @@ namespace QuanLyDichVuKhachSan.Services
 
                     int creatorId = SafeGetInt(reader, "NguoiTaoId");
                     int? payerId = SafeGetNullableInt(reader, "NguoiThanhToanId");
+                    string staff = SafeGetString(reader, "TenNguoiTao");
+                    if (string.IsNullOrWhiteSpace(staff) && creatorId == 0) staff = "Chủ khách sạn";
+                    string payerStaff = SafeGetString(reader, "TenNguoiThanhToan");
+                    if (string.IsNullOrWhiteSpace(payerStaff) && payerId == 0) payerStaff = "Chủ khách sạn";
                     bool daTT = SafeGetBool(reader, "DaThanhToan");
-                    var (staff, payerStaff) = ReadActorLabels(reader, creatorId, payerId, daTT);
+                    if (string.IsNullOrWhiteSpace(payerStaff) && daTT && !string.IsNullOrWhiteSpace(staff)) payerStaff = staff;
 
                     string paymentMethod = SafeGetString(reader, "HinhThucThanhToan");
                     if (string.IsNullOrWhiteSpace(paymentMethod)) paymentMethod = daTT ? "Thanh toán trực tiếp" : "Ghi nợ vào phòng";

@@ -321,39 +321,6 @@ namespace QuanLyDichVuKhachSan.Models
         }
     }
 
-    /// <summary>
-    /// Một phiếu nhập kho ở cấp header (dùng cho tab Lịch sử nhập kho).
-    /// </summary>
-    public class InventoryReceipt
-    {
-        public int Id { get; set; }
-        public string ReceiptCode { get; set; } = string.Empty;
-        public DateTime ImportDate { get; set; } = DateTime.Now;
-        public string Supplier { get; set; } = string.Empty;
-        public string ImportedBy { get; set; } = string.Empty;
-        public string Note { get; set; } = string.Empty;
-        public int TotalItems { get; set; }
-        public decimal TotalCost { get; set; }
-
-        /// <summary>Đường dẫn tương đối tới file Excel lưu trữ (VD: PhieuNhapKho\PN-20261112-01.xlsx).</summary>
-        public string FileExcelPath { get; set; } = string.Empty;
-
-        public string ImportDateDisplay => ImportDate.ToString("dd/MM/yyyy HH:mm");
-        public string TotalCostDisplay => $"{TotalCost:N0} đ";
-        public string TotalItemsDisplay => $"{TotalItems} dòng";
-        public string FileExcelDisplay => string.IsNullOrWhiteSpace(FileExcelPath) ? "Chưa có file" : "Có file Excel";
-    }
-
-    /// <summary>
-    /// Kết quả lưu phiếu nhập kho (mã phiếu cuối cùng có thể khác mã yêu cầu nếu bị trùng).
-    /// </summary>
-    public class ReceiptSaveResult
-    {
-        public int ReceiptId { get; set; }
-        public string ReceiptCode { get; set; } = string.Empty;
-        public bool Success => ReceiptId > 0;
-    }
-
     public class WarehouseReceiptDraftItem : INotifyPropertyChanged
     {
         public int FoodItemId { get; set; }
@@ -1645,7 +1612,7 @@ namespace QuanLyDichVuKhachSan.Models
 
         public string ServiceBadgeBg => ServiceCategory switch
         {
-            "Tiền phòng" or "Tiền phòng & Dịch vụ" => "#DBEAFE",
+            "Tiền phòng & Dịch vụ" => "#DBEAFE",
             "Ăn uống" or "Ẩm thực & Ăn uống" => "#FEF3C7",
             "Sảnh & Sự kiện" => "#FCE7F3",
             "Thuê xe máy" => "#E0E7FF",
@@ -1656,7 +1623,7 @@ namespace QuanLyDichVuKhachSan.Models
 
         public string ServiceBadgeFg => ServiceCategory switch
         {
-            "Tiền phòng" or "Tiền phòng & Dịch vụ" => "#1D4ED8",
+            "Tiền phòng & Dịch vụ" => "#1D4ED8",
             "Ăn uống" or "Ẩm thực & Ăn uống" => "#B45309",
             "Sảnh & Sự kiện" => "#BE185D",
             "Thuê xe máy" => "#4338CA",

@@ -592,14 +592,6 @@ END";
             }
 
             var newId = Data.StaffList.Count > 0 ? Data.StaffList.Max(x => x.Id) + 1 : 1;
-
-            // Tự động sinh tên tài khoản và mật khẩu mặc định (123)
-            var existingUsernames = Data.Users.Select(u => u.Username)
-                .Concat(Data.StaffList.Select(s => s.Username))
-                .Where(u => !string.IsNullOrWhiteSpace(u));
-            string autoUsername = Helpers.StaffAccountHelper.GenerateStaffUsername(NewStaffName.Trim(), existingUsernames);
-            string defaultPassword = "123";
-
             var staff = new Staff
             {
                 Id = newId,
@@ -610,9 +602,7 @@ END";
                 Email = NewStaffEmail?.Trim() ?? "",
                 Position = NewStaffPosition,
                 BaseSalary = parsedSalary,
-                Status = "Đang làm việc",
-                Username = autoUsername,
-                Password = defaultPassword
+                Status = "Đang làm việc"
             };
 
             Data.StaffList.Add(staff);
@@ -625,7 +615,7 @@ END";
             NewStaffSalaryInput = "";
             UpdateNextStaffCode();
 
-            // Đồng bộ xuống CSDL SQL Server (Table NhanVien, TaiKhoanNhanVien và TaiKhoan)
+            // Đồng bộ xuống CSDL SQL Server (Table NhanVien)
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
                 "INSERT INTO NhanVien (MaNV, HoTen, CCCD, SoDienThoai, Email, ChucVu, LuongCoBan, TrangThai) VALUES (@MaNV, @HoTen, @CCCD, @Phone, @Email, @ChucVu, @Luong, @TrangThai)",
                 new SqlParameter("@MaNV", staff.Code),
@@ -638,39 +628,7 @@ END";
                 new SqlParameter("@TrangThai", staff.Status)
             );
 
-            // Tự động cấp tài khoản đăng nhập vào CSDL
-            _ = DatabaseService.Instance.CreateStaffAccountAsync(
-                staff.Id,
-                autoUsername,
-                defaultPassword,
-                staff.FullName,
-                staff.PhoneNumber,
-                staff.Email);
-
-            // Đồng bộ bộ nhớ danh sách User
-            Data.Users.Add(new User
-            {
-                Id = Data.Users.Count > 0 ? Data.Users.Max(u => u.Id) + 1 : 1,
-                Username = autoUsername,
-                Password = defaultPassword,
-                FullName = staff.FullName,
-                Role = UserRole.Receptionist,
-                PhoneNumber = staff.PhoneNumber,
-                Email = staff.Email,
-                IsActive = true,
-                StaffId = staff.Id
-            });
-
-            MessageBox.Show(
-                $"Đã thêm nhân viên [{staff.FullName} - {staff.Code}] thành công!\n\n" +
-                $"🔑 TÀI KHOẢN ĐĂNG NHẬP ĐÃ TỰ ĐỘNG CẤP:\n" +
-                $"• Tên tài khoản: {autoUsername}\n" +
-                $"• Mật khẩu mặc định: {defaultPassword}\n" +
-                $"• Trạng thái: Đang hoạt động (Active)\n\n" +
-                $"(Nhân viên có thể dùng tài khoản này đăng nhập ngay vào ứng dụng).",
-                "Cấp tài khoản nhân viên",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            MessageBox.Show($"Đã thêm nhân viên [{staff.FullName} - {staff.Code}] thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void DeleteStaff(object? parameter)
@@ -702,18 +660,11 @@ END";
                     DatabaseService.Instance.ExecuteNonQueryAsync(
                         "DELETE FROM PhanCongCaTruc WHERE NhanVienId = @Id AND NgayTruc >= CAST(GETDATE() AS DATE); " +
                         "UPDATE NhanVien SET TrangThai = N'Đã nghỉ việc' WHERE Id = @Id OR MaNV = @Code; " +
-                        "UPDATE TaiKhoan SET TrangThai = 0 WHERE NhanVienId = @Id OR HoTen = @Name; " +
-                        "UPDATE TaiKhoanNhanVien SET TrangThai = 0 WHERE NhanVienId = @Id;",
+                        "UPDATE TaiKhoan SET TrangThai = 0 WHERE HoTen = @Name;",
                         new SqlParameter("@Id", staff.Id),
                         new SqlParameter("@Code", staff.Code),
                         new SqlParameter("@Name", staff.FullName)
                     ).GetAwaiter().GetResult();
-
-                    var userToLock = Data.Users.FirstOrDefault(u => u.StaffId == staff.Id || string.Equals(u.Username, staff.Username, StringComparison.OrdinalIgnoreCase) || string.Equals(u.FullName, staff.FullName, StringComparison.OrdinalIgnoreCase));
-                    if (userToLock != null)
-                    {
-                        userToLock.IsActive = false;
-                    }
 
                     RefreshWeeklySchedule();
                     MessageBox.Show($"Đã chuyển trạng thái nhân viên [{staff.FullName}] sang 'Đã nghỉ việc' thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -817,14 +768,7 @@ END";
 UPDATE NhanVien 
 SET HoTen = @HoTen, CCCD = @CCCD, SoDienThoai = @Phone, ChucVu = @ChucVu, LuongCoBan = @Luong
 WHERE Id = @Id OR MaNV = @MaNV;
-UPDATE TaiKhoan SET HoTen = @HoTen, SoDienThoai = @Phone WHERE NhanVienId = @Id OR HoTen = @OldHoTen;";
-
-            var userToEdit = Data.Users.FirstOrDefault(u => u.StaffId == EditingStaff.Id || string.Equals(u.FullName, oldName, StringComparison.OrdinalIgnoreCase));
-            if (userToEdit != null)
-            {
-                userToEdit.FullName = EditingStaff.FullName;
-                userToEdit.PhoneNumber = EditingStaff.PhoneNumber;
-            }
+UPDATE TaiKhoan SET HoTen = @HoTen WHERE HoTen = @OldHoTen;";
 
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
                 sql,

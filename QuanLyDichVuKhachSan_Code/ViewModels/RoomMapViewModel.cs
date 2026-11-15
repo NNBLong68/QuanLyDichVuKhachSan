@@ -648,8 +648,8 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 RoomCost = roomCost,
                 ServicesCost = unpaidServicesCost,
                 TotalAmount = roomCost + unpaidServicesCost,
-                IssuedBy = Data.GetCurrentActorName(),
-                PaidBy = Data.GetCurrentActorName(),
+                IssuedBy = Data.GetCurrentDutyStaffName(),
+                PaidBy = Data.GetCurrentDutyStaffName(),
                 PaidItems = unpaidItems
             };
 
@@ -658,7 +658,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             if (dialogResult == true || billWindow.IsConfirmed)
             {
-                var payResult = Data.PayRoomServices(SelectedRoom.RoomNumber, includeRoomCharge, invoice.InvoiceCode);
+                var payResult = Data.PayRoomServices(SelectedRoom.RoomNumber, includeRoomCharge);
                 if (!payResult.Success)
                 {
                     MessageBox.Show("Không thể xác nhận thanh toán với SQL Server. Vui lòng kiểm tra kết nối và thử lại!", "Lỗi thanh toán", MessageBoxButton.OK, MessageBoxImage.Error);

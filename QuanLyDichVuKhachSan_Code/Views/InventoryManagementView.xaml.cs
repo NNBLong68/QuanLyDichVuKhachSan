@@ -33,6 +33,7 @@ namespace QuanLyDichVuKhachSan.Views
 
             FrameworkElement? targetContainer = subTab switch
             {
+                "Receipt" => SubTabReceipt,
                 "Warehouse" => SubTabWarehouse,
                 "LowStock" => SubTabLowStock,
                 "NearExpiry" => SubTabNearExpiry,

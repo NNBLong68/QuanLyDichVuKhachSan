@@ -275,7 +275,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
         }
 
-        public string CreatorStaffDisplay => Data.GetCurrentActorName();
+        public string CreatorStaffDisplay => Auth.IsAdmin ? "Chủ khách sạn (Admin)" : Data.GetCurrentDutyStaffName(DateTime.Now);
 
         private void NotifyPaymentCalculationChanged()
         {
@@ -782,13 +782,6 @@ namespace QuanLyDichVuKhachSan.ViewModels
             };
             _vehicleReminderTimer.Tick += (s, e) => CheckVehicleDueReminders();
             _vehicleReminderTimer.Start();
-
-            Auth.AuthStateChanged += () =>
-            {
-                OnPropertyChanged(nameof(IsAdmin));
-                OnPropertyChanged(nameof(IsReceptionist));
-                OnPropertyChanged(nameof(CreatorStaffDisplay));
-            };
         }
 
         private void SetMaintenance(object? parameter)
@@ -980,8 +973,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             string method = isRoomCharge ? "Ghi nợ vào phòng" : (IsRentalBankTransfer ? "Chuyển khoản" : "Tiền mặt");
             decimal actualCollect = isRoomCharge ? 0 : (IsFullPayment ? CalculatedFee : DepositAmount);
             string staff = CreatorStaffDisplay;
-            int nextId = Data.VehicleRentals.Any() ? Data.VehicleRentals.Max(r => r.Id) + 1 : 1;
-            string code = $"TX-2026-{nextId:D3}";
+            string code = $"TX-{DateTime.Now:yyyyMMdd}-{Data.VehicleRentals.Count + 1:D2}";
             TryGetRentalDateTimes(out var start, out var end);
 
             // Kiểm tra trùng lịch đặt xe kèm thời gian kiểm tra vệ sinh (buffer 30 phút theo Trigger CSDL)
@@ -1155,7 +1147,6 @@ namespace QuanLyDichVuKhachSan.ViewModels
             string prevPayer = rental.PaidByStaffName;
             DateTime? prevThoiGianTT = rental.ThoiGianThanhToan;
 
-            string actor = Data.GetCurrentActorName();
             rental.ActualReturnDate = ActualReturnDate;
             rental.RentalFee = ActualRentalFee;
             rental.AdditionalCost = ReturnExtraCost;
@@ -1164,8 +1155,8 @@ namespace QuanLyDichVuKhachSan.ViewModels
             rental.OrderStatus = "Hoàn tất";
             rental.PaymentStatus = isRoomCharge ? "Ghi nợ vào phòng" : "Đã thanh toán";
             rental.DaThanhToan = !isRoomCharge;
-            rental.PaidByStaffName = isRoomCharge ? "" : actor;
-            rental.ThoiGianThanhToan = isRoomCharge ? null : DateTime.Now;
+            rental.PaidByStaffName = CreatorStaffDisplay;
+            rental.ThoiGianThanhToan = DateTime.Now;
 
             var win = new Views.InvoiceBillWindow(rental);
             bool? res = win.ShowDialog();

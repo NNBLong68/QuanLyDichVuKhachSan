@@ -403,7 +403,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
         }
 
-        public string CreatorStaffDisplay => Data.GetCurrentActorName();
+        public string CreatorStaffDisplay => Auth.IsAdmin ? "Chủ khách sạn (Admin)" : Data.GetCurrentDutyStaffName(DateTime.Now);
 
         private void NotifyPaymentCalculationChanged()
         {
@@ -834,13 +834,6 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 if (IsTimetableTab) BuildHourlySchedule();
             };
             _realtimeCheckTimer.Start();
-
-            Auth.AuthStateChanged += () =>
-            {
-                OnPropertyChanged(nameof(IsAdmin));
-                OnPropertyChanged(nameof(IsReceptionist));
-                OnPropertyChanged(nameof(CreatorStaffDisplay));
-            };
         }
 
         public void BuildHourlySchedule()
@@ -1124,8 +1117,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             bool isRoomCharge = BookingBillingType == BillingType.ChargeToRoom && CanChooseBookingRoomBill;
             string method = isRoomCharge ? "Ghi nợ vào phòng" : (IsBookingBankTransfer ? "Chuyển khoản" : "Tiền mặt");
-            int nextId = Data.EventBookings.Any() ? Data.EventBookings.Max(b => b.Id) + 1 : 1;
-            string code = $"SK-2026-{nextId:D3}";
+            string code = $"SK-{DateTime.Now:yyyyMMdd}-{Data.EventBookings.Count + 1:D2}";
             string roomNum = DataService.NormalizeRoomNumber(BookingRoomNumber);
             decimal actualCollect = isRoomCharge ? 0 : (IsFullPayment ? EstimatedTotalAmount : DepositAmount);
             string staff = CreatorStaffDisplay;
@@ -1205,14 +1197,13 @@ namespace QuanLyDichVuKhachSan.ViewModels
             string prevPayer = targetBooking.PaidByStaffName;
             DateTime? prevThoiGianTT = targetBooking.ThoiGianThanhToan;
 
-            string actor = Data.GetCurrentActorName();
             targetBooking.AdditionalCost = ExtraFee;
             targetBooking.DamageNote = DamageNote;
             targetBooking.OrderStatus = "Hoàn tất";
             targetBooking.PaymentStatus = isRoomCharge ? "Ghi nợ vào phòng" : "Hoàn tất";
             targetBooking.DaThanhToan = !isRoomCharge;
-            targetBooking.PaidByStaffName = isRoomCharge ? "" : actor;
-            targetBooking.ThoiGianThanhToan = isRoomCharge ? null : DateTime.Now;
+            targetBooking.PaidByStaffName = CreatorStaffDisplay;
+            targetBooking.ThoiGianThanhToan = DateTime.Now;
 
             var win = new Views.InvoiceBillWindow(targetBooking);
             bool? res = win.ShowDialog();

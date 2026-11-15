@@ -17,8 +17,6 @@ namespace QuanLyDichVuKhachSan.Services
     /// </summary>
     public class DataService
     {
-        public const string AdminDisplayName = "Chủ khách sạn (Admin)";
-
         private static DataService? _instance;
         public static DataService Instance => _instance ??= new DataService();
 
@@ -62,10 +60,6 @@ namespace QuanLyDichVuKhachSan.Services
         public ObservableCollection<LaundryOrder> LaundryOrders { get; } = new();
         public event Action? LaundryDataChanged;
         public void NotifyLaundryDataChanged() => LaundryDataChanged?.Invoke();
-
-        // Sự kiện đồng bộ Lịch sử giao dịch theo thời gian thực
-        public event Action? TransactionsChanged;
-        public void NotifyTransactionsChanged() => TransactionsChanged?.Invoke();
 
         // Danh sách số phòng hỗ trợ chọn hoặc gõ tự do (Chỉ các phòng có khách đang ở)
         public ObservableCollection<string> AvailableRoomNumbers { get; } = new() { "" };
@@ -444,9 +438,7 @@ namespace QuanLyDichVuKhachSan.Services
                     Details = $"Mã {fo.OrderCode}" + (!string.IsNullOrEmpty(fo.Note) ? $" ({fo.Note})" : ""),
                     UsedTime = fo.CreatedAt,
                     Amount = fo.TotalAmount,
-                    IsPaid = fo.DaThanhToan,
-                    RecordedBy = ResolveHistoricalActorName(fo.RecordedBy, fo.NguoiTaoId, fo.CreatedAt),
-                    PaidBy = fo.DaThanhToan ? ResolveHistoricalActorName(fo.PaidByStaffName, fo.NguoiThanhToanId ?? fo.NguoiTaoId, fo.ThoiGianThanhToan ?? fo.CreatedAt) : ""
+                    IsPaid = fo.DaThanhToan
                 });
             }
 
@@ -476,9 +468,7 @@ namespace QuanLyDichVuKhachSan.Services
                     Details = $"Mã {eb.BookingCode}" + (eb.DepositAmount > 0 && !eb.DaThanhToan ? $" (Đã cọc {eb.DepositAmount:N0}đ)" : ""),
                     UsedTime = eb.StartTime,
                     Amount = eventAmount,
-                    IsPaid = eb.DaThanhToan,
-                    RecordedBy = ResolveHistoricalActorName(eb.RecordedBy, eb.NguoiTaoId, eb.CreatedAt),
-                    PaidBy = eb.DaThanhToan ? ResolveHistoricalActorName(eb.PaidByStaffName, eb.NguoiThanhToanId ?? eb.NguoiTaoId, eb.ThoiGianThanhToan ?? eb.EndTime) : ""
+                    IsPaid = eb.DaThanhToan
                 });
             }
 
@@ -509,9 +499,7 @@ namespace QuanLyDichVuKhachSan.Services
                     Details = $"Mã {vr.RentalCode}" + (vr.DepositAmount > 0 && !vr.DaThanhToan ? $" (Đã cọc {vr.DepositAmount:N0}đ)" : ""),
                     UsedTime = vr.RentalDate,
                     Amount = vehicleCost,
-                    IsPaid = vr.DaThanhToan,
-                    RecordedBy = ResolveHistoricalActorName(vr.RecordedBy, vr.NguoiTaoId, vr.CreatedAt),
-                    PaidBy = vr.DaThanhToan ? ResolveHistoricalActorName(vr.PaidByStaffName, vr.NguoiThanhToanId ?? vr.NguoiTaoId, vr.ThoiGianThanhToan ?? vr.ActualReturnDate ?? vr.RentalDate) : ""
+                    IsPaid = vr.DaThanhToan
                 });
             }
 
@@ -533,9 +521,7 @@ namespace QuanLyDichVuKhachSan.Services
                     Details = $"Mã vé {pr.TicketCode}",
                     UsedTime = pr.CheckInTime,
                     Amount = pr.ParkingFee,
-                    IsPaid = pr.DaThanhToan,
-                    RecordedBy = ResolveHistoricalActorName(pr.RecordedBy, pr.NguoiTaoId, pr.CheckInTime),
-                    PaidBy = pr.DaThanhToan ? ResolveHistoricalActorName(pr.PaidByStaffName, pr.NguoiThanhToanId ?? pr.NguoiTaoId, pr.ThoiGianThanhToan ?? pr.CheckOutTime ?? pr.CheckInTime) : ""
+                    IsPaid = pr.DaThanhToan
                 });
             }
 
@@ -555,9 +541,7 @@ namespace QuanLyDichVuKhachSan.Services
                             Details = $"Mã {lo.OrderCode} ({lo.PaymentMethod})",
                             UsedTime = lo.ReceivedDate,
                             Amount = lo.TotalPrice,
-                            IsPaid = true,
-                            RecordedBy = ResolveHistoricalActorName(lo.RecordedBy, lo.NguoiTaoId, lo.ReceivedDate),
-                            PaidBy = ResolveHistoricalActorName(lo.PaidByStaffName, lo.NguoiThanhToanId ?? lo.NguoiTaoId, lo.ThoiGianThanhToan ?? lo.ReceivedDate)
+                            IsPaid = true
                         });
 
                         RoomServiceUsages.Add(new RoomServiceUsageItem
@@ -588,9 +572,7 @@ namespace QuanLyDichVuKhachSan.Services
                     Details = $"Mã {lo.OrderCode}",
                     UsedTime = lo.ReceivedDate,
                     Amount = lo.TotalPrice,
-                    IsPaid = lo.DaThanhToan,
-                    RecordedBy = ResolveHistoricalActorName(lo.RecordedBy, lo.NguoiTaoId, lo.ReceivedDate),
-                    PaidBy = lo.DaThanhToan ? ResolveHistoricalActorName(lo.PaidByStaffName, lo.NguoiThanhToanId ?? lo.NguoiTaoId, lo.ThoiGianThanhToan ?? lo.ReceivedDate) : ""
+                    IsPaid = lo.DaThanhToan
                 });
             }
         }
@@ -706,49 +688,29 @@ namespace QuanLyDichVuKhachSan.Services
         // ------------------------------------------------------------------------------------------------------
         // 5. THUẬT TOÁN TÌM NHÂN VIÊN TRỰC CA HIỆN TẠI (TIME-SLOT MATCHING ALGORITHM - O(S))
         // ------------------------------------------------------------------------------------------------------
-        private Shift? FindShiftForTime(TimeSpan timeOfDay)
-        {
-            return Shifts.FirstOrDefault(s =>
-            {
-                if (s.StartTime <= s.EndTime)
-                    return timeOfDay >= s.StartTime && timeOfDay < s.EndTime;
-                else
-                    return timeOfDay >= s.StartTime || timeOfDay < s.EndTime;
-            });
-        }
-
-        private List<ShiftAssignment> GetAssignmentsForShiftTime(DateTime targetTime, Shift currentShift)
-        {
-            TimeSpan timeOfDay = targetTime.TimeOfDay;
-            DateTime shiftDate = (currentShift.StartTime > currentShift.EndTime && timeOfDay < currentShift.EndTime)
-                ? targetTime.Date.AddDays(-1)
-                : targetTime.Date;
-
-            var list = ShiftAssignments.Where(a =>
-                a.ShiftDate.Date == shiftDate && a.ShiftId == currentShift.Id && a.StaffId > 0).ToList();
-
-            if (list.Count == 0 && shiftDate != targetTime.Date)
-            {
-                list = ShiftAssignments.Where(a =>
-                    a.ShiftDate.Date == targetTime.Date && a.ShiftId == currentShift.Id && a.StaffId > 0).ToList();
-            }
-
-            return list;
-        }
-
         public int GetCurrentDutyStaffId()
         {
             try
             {
                 DateTime now = DateTime.Now;
-                var currentShift = FindShiftForTime(now.TimeOfDay);
+                TimeSpan nowTime = now.TimeOfDay;
+
+                var currentShift = Shifts.FirstOrDefault(s =>
+                {
+                    if (s.StartTime <= s.EndTime)
+                        return nowTime >= s.StartTime && nowTime < s.EndTime;
+                    else
+                        return nowTime >= s.StartTime || nowTime < s.EndTime;
+                });
+
                 if (currentShift != null)
                 {
-                    var assignments = GetAssignmentsForShiftTime(now, currentShift);
-                    var firstAssign = assignments.FirstOrDefault();
-                    if (firstAssign != null && firstAssign.StaffId > 0)
+                    var assignment = ShiftAssignments.FirstOrDefault(a => 
+                        a.ShiftDate.Date == now.Date && a.ShiftId == currentShift.Id);
+
+                    if (assignment != null && assignment.StaffId > 0)
                     {
-                        return firstAssign.StaffId;
+                        return assignment.StaffId;
                     }
                 }
 
@@ -768,11 +730,21 @@ namespace QuanLyDichVuKhachSan.Services
             try
             {
                 DateTime targetTime = atTime ?? DateTime.Now;
-                var currentShift = FindShiftForTime(targetTime.TimeOfDay);
+                TimeSpan timeOfDay = targetTime.TimeOfDay;
+
+                var currentShift = Shifts.FirstOrDefault(s =>
+                {
+                    if (s.StartTime <= s.EndTime)
+                        return timeOfDay >= s.StartTime && timeOfDay < s.EndTime;
+                    else
+                        return timeOfDay >= s.StartTime || timeOfDay < s.EndTime;
+                });
 
                 if (currentShift != null)
                 {
-                    var assignments = GetAssignmentsForShiftTime(targetTime, currentShift);
+                    var assignments = ShiftAssignments.Where(a => 
+                        a.ShiftDate.Date == targetTime.Date && a.ShiftId == currentShift.Id && a.StaffId > 0).ToList();
+
                     var names = new List<string>();
                     foreach (var a in assignments)
                     {
@@ -781,9 +753,10 @@ namespace QuanLyDichVuKhachSan.Services
                         {
                             name = a.StaffName.Trim();
                         }
-                        else if (_staffCache.TryGetValue(a.StaffId, out var st) || (st = StaffList.FirstOrDefault(x => x.Id == a.StaffId)) != null)
+                        else
                         {
-                            name = st.FullName.Trim();
+                            var staff = StaffList.FirstOrDefault(x => x.Id == a.StaffId);
+                            if (staff != null) name = staff.FullName.Trim();
                         }
 
                         if (!string.IsNullOrWhiteSpace(name) && !names.Contains(name))
@@ -807,40 +780,16 @@ namespace QuanLyDichVuKhachSan.Services
         }
 
         /// <summary>
-        /// Lấy tên người lập đơn / người thực hiện thu tiền thanh toán dựa trên tài khoản đang đăng nhập:
-        /// - Nếu tài khoản là Admin: Ghi nhận "Chủ khách sạn (Admin)" (không lấy tên nhân viên trực ca).
-        /// - Nếu tài khoản là Lễ tân: Ghi nhận tên nhân viên lễ tân đang trực ca tại thời điểm thao tác.
+        /// Lấy tên người lập đơn / người thực hiện thu tiền thanh toán:
+        /// - Nếu tài khoản đang thao tác là Admin: Ưu tiên ghi nhận là "Chủ khách sạn (Admin)".
+        /// - Nếu tài khoản đang thao tác là Lễ tân: Ghi nhận tên nhân viên lễ tân đang trực ca đó theo thời khóa biểu.
         /// </summary>
         public string GetCurrentDutyStaffName(DateTime? atTime = null)
         {
             if (AuthService.Instance.IsAdmin)
             {
-                return AdminDisplayName;
+                return "Chủ khách sạn (Admin)";
             }
-
-            // Nếu đăng nhập bằng tài khoản cá nhân của nhân viên (khác tài khoản dùng chung "letan")
-            var curUser = AuthService.Instance.CurrentUser;
-            if (curUser != null && !string.IsNullOrWhiteSpace(curUser.FullName) &&
-                !string.Equals(curUser.Username, "letan", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(curUser.FullName, "Lễ tân", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(curUser.FullName, "Lễ Tân Trực Chính", StringComparison.OrdinalIgnoreCase))
-            {
-                return curUser.FullName;
-            }
-
-            return GetScheduledDutyStaffName(atTime);
-        }
-
-        public string GetCurrentActorName() => GetCurrentDutyStaffName(null);
-
-        public string ResolveHistoricalActorName(string? explicitName, int staffId, DateTime atTime)
-        {
-            if (!string.IsNullOrWhiteSpace(explicitName))
-                return explicitName;
-            if (staffId == 0)
-                return AdminDisplayName;
-            if (_staffCache.TryGetValue(staffId, out var st) && !string.IsNullOrWhiteSpace(st.FullName))
-                return st.FullName;
             return GetScheduledDutyStaffName(atTime);
         }
 
@@ -848,14 +797,11 @@ namespace QuanLyDichVuKhachSan.Services
         {
             var list = new List<TransactionRecord>();
 
-            // 1. Tiền phòng (Hóa đơn quyết toán trả phòng đã thu tiền).
-            //    Dịch vụ kèm phòng đã được liệt kê riêng ở các mục bên dưới nên chỉ lấy RoomCost để tránh cộng trùng.
+            // 1. Tiền phòng. Dịch vụ kèm phòng đã được liệt kê riêng ở các mục bên dưới,
+            //    nên chỉ ghi nhận phần tiền phòng để tránh cộng trùng doanh thu.
             foreach (var inv in RoomInvoices)
             {
                 if (inv.RoomCost <= 0) continue;
-
-                string creator = !string.IsNullOrWhiteSpace(inv.IssuedBy) ? inv.IssuedBy : AdminDisplayName;
-                string payer = !string.IsNullOrWhiteSpace(inv.PaidBy) ? inv.PaidBy : creator;
 
                 list.Add(new TransactionRecord
                 {
@@ -867,25 +813,19 @@ namespace QuanLyDichVuKhachSan.Services
                     PaymentTime = inv.InvoiceDate,
                     Amount = inv.RoomCost,
                     PaymentMethod = "Thanh toán phòng (Check-out)",
-                    CreatedBy = creator,
-                    PaidBy = payer,
+                    CreatedBy = !string.IsNullOrWhiteSpace(inv.IssuedBy) ? inv.IssuedBy : "Chủ khách sạn (Admin)",
+                    PaidBy = !string.IsNullOrWhiteSpace(inv.PaidBy) ? inv.PaidBy : (!string.IsNullOrWhiteSpace(inv.IssuedBy) ? inv.IssuedBy : "Chủ khách sạn (Admin)"),
                     Status = "Đã thanh toán",
                     IsPaid = true,
                     OriginalObject = inv
                 });
             }
 
-            // 2. Dịch vụ Ăn uống / Mini-bar (Chỉ đưa vào lịch sử giao dịch các đơn ĐÃ THU TIỀN)
+            // 2. Dịch vụ Ăn uống / Mini-bar
             foreach (var fo in FoodOrders)
             {
-                if (!fo.DaThanhToan || fo.Status == "Đã hủy")
-                    continue;
-
-                string creator = ResolveHistoricalActorName(fo.RecordedBy, fo.NguoiTaoId, fo.CreatedAt);
-                DateTime payTime = fo.ThoiGianThanhToan ?? fo.CreatedAt;
-                string payer = ResolveHistoricalActorName(fo.PaidByStaffName, fo.NguoiThanhToanId ?? fo.NguoiTaoId, payTime);
-                if (string.IsNullOrWhiteSpace(payer)) payer = creator;
-
+                string creator = !string.IsNullOrWhiteSpace(fo.RecordedBy) ? fo.RecordedBy : (fo.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Phạm Minh Tuấn");
+                string payer = !string.IsNullOrWhiteSpace(fo.PaidByStaffName) ? fo.PaidByStaffName : (!string.IsNullOrWhiteSpace(fo.RecordedBy) ? fo.RecordedBy : (fo.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Phạm Minh Tuấn"));
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = fo.OrderCode,
@@ -893,52 +833,37 @@ namespace QuanLyDichVuKhachSan.Services
                     CustomerName = fo.CustomerName,
                     PhoneNumber = "",
                     RoomNumber = fo.RoomNumber,
-                    PaymentTime = payTime,
+                    PaymentTime = fo.ThoiGianThanhToan ?? fo.CreatedAt,
                     Amount = fo.TotalAmount,
-                    PaymentMethod = fo.PaymentType == FoodPaymentType.DirectPayment
-                        ? (!string.IsNullOrWhiteSpace(fo.PaymentMethod) && !fo.PaymentMethod.Contains("Ghi nợ")
-                            ? $"Thanh toán trực tiếp ({fo.PaymentMethod})"
-                            : "Thanh toán trực tiếp")
-                        : "Thanh toán theo hóa đơn phòng",
+                    PaymentMethod = fo.PaymentType == FoodPaymentType.DirectPayment 
+                        ? (!string.IsNullOrWhiteSpace(fo.PaymentMethod) ? $"Thanh toán trực tiếp ({fo.PaymentMethod})" : "Thanh toán trực tiếp") 
+                        : "Ghi nợ vào phòng",
                     CreatedBy = creator,
-                    PaidBy = payer,
-                    Status = "Đã thanh toán",
-                    IsPaid = true,
+                    PaidBy = fo.DaThanhToan ? payer : "",
+                    Status = fo.Status == "Đã hủy" ? "Đã hủy" : (fo.DaThanhToan ? "Đã thanh toán" : "Chưa thanh toán"),
+                    IsPaid = fo.DaThanhToan && fo.Status != "Đã hủy",
                     OriginalObject = fo
                 });
             }
 
-            // 3. Sảnh & Sự kiện (Chỉ đưa vào giao dịch ĐÃ THU TIỀN đủ hoặc ĐÃ THU CỌC; loại trừ ghi nợ chưa trả & hủy hoàn cọc)
+            // 3. Sảnh & Sự kiện
             foreach (var eb in EventBookings)
             {
-                bool isCancelledRefund = eb.OrderStatus == "Đã hủy - Hoàn cọc" || eb.OrderStatus == "Đã hủy" || eb.PaymentStatus == "Đã hủy";
-                if (isCancelledRefund && eb.OrderStatus != "Đã hủy - Không hoàn cọc")
-                    continue;
+                decimal amt;
+                if (eb.OrderStatus != null && eb.OrderStatus.StartsWith("Đã hủy"))
+                {
+                    amt = eb.OrderStatus == "Đã hủy - Không hoàn cọc" ? eb.DepositAmount : 0;
+                }
+                else
+                {
+                    amt = (eb.DaThanhToan || eb.PaymentStatus == "Hoàn tất" || eb.PaymentStatus == "Ghi nợ vào phòng") ? eb.FinalTotal : eb.DepositAmount;
+                }
 
-                bool isForfeitedDeposit = eb.OrderStatus == "Đã hủy - Không hoàn cọc";
-                bool hasCollectedDeposit = !eb.DaThanhToan && eb.DepositAmount > 0;
-                if (!eb.DaThanhToan && !isForfeitedDeposit && !hasCollectedDeposit)
-                    continue;
-
-                string creator = ResolveHistoricalActorName(eb.RecordedBy, eb.NguoiTaoId, eb.CreatedAt);
-                DateTime payTime = eb.DaThanhToan
-                    ? (eb.ThoiGianThanhToan ?? eb.EndTime)
-                    : eb.CreatedAt;
-                string payer = eb.DaThanhToan
-                    ? ResolveHistoricalActorName(eb.PaidByStaffName, eb.NguoiThanhToanId ?? eb.NguoiTaoId, payTime)
-                    : creator;
-                if (string.IsNullOrWhiteSpace(payer)) payer = creator;
-
-                decimal amt = eb.DaThanhToan ? eb.FinalTotal : eb.DepositAmount;
-                string ebStatus = eb.DaThanhToan
-                    ? "Đã thanh toán"
-                    : (isForfeitedDeposit ? "Đã hủy - Không hoàn cọc" : "Đã thu cọc");
-                string method = isForfeitedDeposit
-                    ? "Thu giữ tiền cọc"
-                    : (eb.DaThanhToan
-                        ? (eb.PaymentMethod == "Ghi nợ vào phòng" ? "Thanh toán theo hóa đơn phòng" : "Thanh toán trực tiếp (Quyết toán)")
-                        : "Thu tiền cọc trước");
-
+                string creator = !string.IsNullOrWhiteSpace(eb.RecordedBy) ? eb.RecordedBy : (eb.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Trần Thị Mai");
+                string payer = !string.IsNullOrWhiteSpace(eb.PaidByStaffName) ? eb.PaidByStaffName : (!string.IsNullOrWhiteSpace(eb.RecordedBy) ? eb.RecordedBy : (eb.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Trần Thị Mai"));
+                string ebStatus = (eb.OrderStatus != null && eb.OrderStatus.StartsWith("Đã hủy"))
+                    ? eb.OrderStatus
+                    : (eb.DaThanhToan ? "Đã thanh toán" : (!string.IsNullOrWhiteSpace(eb.PaymentStatus) ? eb.PaymentStatus : "Chưa thanh toán"));
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = eb.BookingCode,
@@ -946,52 +871,39 @@ namespace QuanLyDichVuKhachSan.Services
                     CustomerName = eb.CustomerName,
                     PhoneNumber = eb.PhoneNumber,
                     RoomNumber = eb.RoomNumber,
-                    PaymentTime = payTime,
+                    PaymentTime = eb.ThoiGianThanhToan ?? eb.EndTime,
                     Amount = amt,
-                    PaymentMethod = method,
+                    PaymentMethod = (eb.OrderStatus != null && eb.OrderStatus.StartsWith("Đã hủy"))
+                        ? (eb.OrderStatus == "Đã hủy - Không hoàn cọc" ? "Thu giữ tiền cọc" : "Hoàn cọc cho khách")
+                        : (eb.DaThanhToan || eb.PaymentStatus == "Hoàn tất" 
+                            ? "Thanh toán trực tiếp (Quyết toán)" 
+                            : (eb.PaymentStatus == "Ghi nợ vào phòng" ? "Ghi nợ vào phòng" : "Đặt cọc trước")),
                     CreatedBy = creator,
-                    PaidBy = payer,
+                    PaidBy = (eb.DaThanhToan || eb.OrderStatus == "Đã hủy - Không hoàn cọc") ? payer : "",
                     Status = ebStatus,
-                    IsPaid = true,
+                    IsPaid = eb.OrderStatus == "Đã hủy - Không hoàn cọc" || (eb.DaThanhToan && (eb.OrderStatus == null || !eb.OrderStatus.StartsWith("Đã hủy"))),
                     OriginalObject = eb
                 });
             }
 
-            // 4. Thuê xe máy (Chỉ đưa vào giao dịch ĐÃ THU TIỀN đủ hoặc ĐÃ THU CỌC; loại trừ ghi nợ chưa trả & hủy hoàn cọc)
+            // 4. Thuê xe máy
             foreach (var vr in VehicleRentals)
             {
-                bool isCancelledRefund = vr.OrderStatus == "Đã hủy - Hoàn cọc" || vr.Status == "Đã hủy - Hoàn cọc" || vr.OrderStatus == "Đã hủy";
-                if (isCancelledRefund && vr.OrderStatus != "Đã hủy - Không hoàn cọc" && vr.Status != "Đã hủy - Không hoàn cọc")
-                    continue;
+                decimal amt;
+                if (vr.OrderStatus != null && vr.OrderStatus.StartsWith("Đã hủy"))
+                {
+                    amt = vr.OrderStatus == "Đã hủy - Không hoàn cọc" ? vr.DepositAmount : 0;
+                }
+                else
+                {
+                    amt = vr.TotalPayment > 0 ? vr.TotalPayment : vr.RentalFee;
+                }
 
-                bool isForfeitedDeposit = vr.OrderStatus == "Đã hủy - Không hoàn cọc" || vr.Status == "Đã hủy - Không hoàn cọc";
-                bool hasCollectedDeposit = !vr.DaThanhToan && vr.DepositAmount > 0;
-                if (!vr.DaThanhToan && !isForfeitedDeposit && !hasCollectedDeposit)
-                    continue;
-
-                string creator = ResolveHistoricalActorName(vr.RecordedBy, vr.NguoiTaoId, vr.CreatedAt);
-                DateTime payTime = vr.DaThanhToan
-                    ? (vr.ThoiGianThanhToan ?? vr.ActualReturnDate ?? vr.RentalDate)
-                    : vr.CreatedAt;
-                string payer = vr.DaThanhToan
-                    ? ResolveHistoricalActorName(vr.PaidByStaffName, vr.NguoiThanhToanId ?? vr.NguoiTaoId, payTime)
-                    : creator;
-                if (string.IsNullOrWhiteSpace(payer)) payer = creator;
-
-                decimal amt = vr.DaThanhToan
-                    ? (vr.TotalPayment > 0 ? vr.TotalPayment : vr.RentalFee + vr.AdditionalCost)
-                    : vr.DepositAmount;
-                string vrStatus = vr.DaThanhToan
-                    ? "Đã thanh toán"
-                    : (isForfeitedDeposit ? "Đã hủy - Không hoàn cọc" : "Đã thu cọc");
-                string method = isForfeitedDeposit
-                    ? "Thu giữ tiền cọc"
-                    : (vr.DaThanhToan
-                        ? ((vr.PaymentStatus == "Ghi nợ vào phòng" || vr.Status == "Ghi nợ vào phòng" || vr.PaymentMethod == "Ghi nợ vào phòng")
-                            ? "Thanh toán theo hóa đơn phòng"
-                            : "Thanh toán trực tiếp")
-                        : "Thu tiền cọc trước");
-
+                string creator = !string.IsNullOrWhiteSpace(vr.RecordedBy) ? vr.RecordedBy : (vr.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Nguyễn Văn An");
+                string payer = !string.IsNullOrWhiteSpace(vr.PaidByStaffName) ? vr.PaidByStaffName : (!string.IsNullOrWhiteSpace(vr.RecordedBy) ? vr.RecordedBy : (vr.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Nguyễn Văn An"));
+                string vrStatus = (vr.OrderStatus != null && vr.OrderStatus.StartsWith("Đã hủy"))
+                    ? vr.OrderStatus
+                    : (vr.DaThanhToan ? "Đã thanh toán" : (vr.Status == "Đã trả" || vr.Status == "Hoàn tất" ? "Đã thanh toán" : vr.Status));
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = vr.RentalCode,
@@ -999,28 +911,29 @@ namespace QuanLyDichVuKhachSan.Services
                     CustomerName = vr.CustomerName,
                     PhoneNumber = vr.PhoneNumber,
                     RoomNumber = vr.RoomNumber,
-                    PaymentTime = payTime,
+                    PaymentTime = vr.ThoiGianThanhToan ?? vr.ActualReturnDate ?? vr.RentalDate,
                     Amount = amt,
-                    PaymentMethod = method,
+                    PaymentMethod = (vr.OrderStatus != null && vr.OrderStatus.StartsWith("Đã hủy"))
+                        ? (vr.OrderStatus == "Đã hủy - Không hoàn cọc" ? "Thu giữ tiền cọc" : "Hoàn cọc cho khách")
+                        : ((vr.PaymentStatus == "Ghi nợ vào phòng" || vr.Status == "Ghi nợ vào phòng")
+                            ? "Ghi nợ vào phòng"
+                            : (string.IsNullOrWhiteSpace(vr.RoomNumber) ? "Thanh toán trực tiếp" : (vr.DaThanhToan ? "Thanh toán trực tiếp" : "Ghi nợ vào phòng"))),
                     CreatedBy = creator,
-                    PaidBy = payer,
+                    PaidBy = (vr.DaThanhToan || vr.OrderStatus == "Đã hủy - Không hoàn cọc") ? payer : "",
                     Status = vrStatus,
-                    IsPaid = true,
+                    IsPaid = vr.OrderStatus == "Đã hủy - Không hoàn cọc" || (vr.DaThanhToan && (vr.OrderStatus == null || !vr.OrderStatus.StartsWith("Đã hủy"))),
                     OriginalObject = vr
                 });
             }
 
-            // 5. Bãi gửi xe (Chỉ đưa vào các lượt gửi xe có thu phí VÀ ĐÃ THANH TOÁN; Bỏ qua xe miễn phí 0đ và xe chưa thanh toán)
+            // 5. Bãi gửi xe (Chỉ ghi nhận khách vãng lai đậu đỗ xe có thu phí > 0 đ; Bỏ qua xe khách phòng miễn phí 0đ)
             foreach (var pr in ParkingRecords)
             {
-                if (!pr.DaThanhToan || pr.ParkingFee <= 0 || pr.ChargeType == ParkingChargeType.ResidentFree || !string.IsNullOrWhiteSpace(pr.RoomNumber))
+                if (pr.ParkingFee <= 0 || pr.ChargeType == ParkingChargeType.ResidentFree || !string.IsNullOrWhiteSpace(pr.RoomNumber))
                     continue;
 
-                string creator = ResolveHistoricalActorName(pr.RecordedBy, pr.NguoiTaoId, pr.CheckInTime);
-                DateTime payTime = pr.ThoiGianThanhToan ?? pr.CheckOutTime ?? pr.CheckInTime;
-                string payer = ResolveHistoricalActorName(pr.PaidByStaffName, pr.NguoiThanhToanId ?? pr.NguoiTaoId, payTime);
-                if (string.IsNullOrWhiteSpace(payer)) payer = creator;
-
+                string creator = !string.IsNullOrWhiteSpace(pr.RecordedBy) ? pr.RecordedBy : (pr.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Lê Hoàng Nam");
+                string payer = !string.IsNullOrWhiteSpace(pr.PaidByStaffName) ? pr.PaidByStaffName : (!string.IsNullOrWhiteSpace(pr.RecordedBy) ? pr.RecordedBy : (pr.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Lê Hoàng Nam"));
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = pr.TicketCode,
@@ -1028,32 +941,22 @@ namespace QuanLyDichVuKhachSan.Services
                     CustomerName = pr.CustomerName,
                     PhoneNumber = pr.PhoneNumber,
                     RoomNumber = pr.RoomNumber,
-                    PaymentTime = payTime,
+                    PaymentTime = pr.ThoiGianThanhToan ?? pr.CheckOutTime ?? pr.CheckInTime,
                     Amount = pr.ParkingFee,
                     PaymentMethod = "Thanh toán trực tiếp",
                     CreatedBy = creator,
-                    PaidBy = payer,
-                    Status = "Đã thanh toán",
-                    IsPaid = true,
+                    PaidBy = pr.DaThanhToan ? payer : "",
+                    Status = pr.DaThanhToan ? "Đã thanh toán" : "Chưa thanh toán",
+                    IsPaid = pr.DaThanhToan,
                     OriginalObject = pr
                 });
             }
 
-            // 6. Giặt ủi (Chỉ đưa vào các đơn ĐÃ THU TIỀN và không bị hủy)
+            // 6. Giặt ủi
             foreach (var lo in LaundryOrders)
             {
-                if (!lo.DaThanhToan || lo.Status == LaundryStatus.Cancelled)
-                    continue;
-
-                string creator = ResolveHistoricalActorName(lo.RecordedBy, lo.NguoiTaoId, lo.ReceivedDate);
-                DateTime payTime = lo.ThoiGianThanhToan ?? lo.ReceivedDate;
-                string payer = ResolveHistoricalActorName(lo.PaidByStaffName, lo.NguoiThanhToanId ?? lo.NguoiTaoId, payTime);
-                if (string.IsNullOrWhiteSpace(payer)) payer = creator;
-
-                string method = (!string.IsNullOrWhiteSpace(lo.PaymentMethod) && lo.PaymentMethod.Contains("trực tiếp", StringComparison.OrdinalIgnoreCase))
-                    ? lo.PaymentMethod
-                    : (string.IsNullOrWhiteSpace(lo.RoomNumber) ? "Thanh toán trực tiếp" : "Thanh toán theo hóa đơn phòng");
-
+                string creator = !string.IsNullOrWhiteSpace(lo.RecordedBy) ? lo.RecordedBy : (lo.NguoiTaoId == 0 ? "Chủ khách sạn (Admin)" : "Trần Thị Mai");
+                string payer = !string.IsNullOrWhiteSpace(lo.PaidByStaffName) ? lo.PaidByStaffName : (!string.IsNullOrWhiteSpace(lo.RecordedBy) ? lo.RecordedBy : (lo.NguoiThanhToanId == 0 ? "Chủ khách sạn (Admin)" : "Trần Thị Mai"));
                 list.Add(new TransactionRecord
                 {
                     TransactionCode = lo.OrderCode,
@@ -1061,13 +964,13 @@ namespace QuanLyDichVuKhachSan.Services
                     CustomerName = lo.CustomerName,
                     PhoneNumber = lo.PhoneNumber,
                     RoomNumber = lo.RoomNumber,
-                    PaymentTime = payTime,
-                    Amount = lo.FinalTotal,
-                    PaymentMethod = method,
+                    PaymentTime = lo.ThoiGianThanhToan ?? lo.ReceivedDate,
+                    Amount = lo.TotalPrice,
+                    PaymentMethod = string.IsNullOrWhiteSpace(lo.RoomNumber) ? "Thanh toán trực tiếp" : "Ghi nợ vào phòng",
                     CreatedBy = creator,
-                    PaidBy = payer,
-                    Status = "Đã thanh toán",
-                    IsPaid = true,
+                    PaidBy = lo.DaThanhToan ? payer : "",
+                    Status = lo.Status == LaundryStatus.Cancelled ? "Đã hủy" : (lo.DaThanhToan ? "Đã thanh toán" : "Chưa thanh toán"),
+                    IsPaid = lo.DaThanhToan && lo.Status != LaundryStatus.Cancelled,
                     OriginalObject = lo
                 });
             }
@@ -1267,7 +1170,7 @@ namespace QuanLyDichVuKhachSan.Services
             order.Id = FoodOrders.Count > 0 ? FoodOrders.Max(x => x.Id) + 1 : 1;
             order.OrderCode = $"DH-AU-{order.Id:D3}";
             order.NguoiTaoId = GetCurrentDutyStaffId();
-            order.RecordedBy = GetCurrentActorName();
+            order.RecordedBy = GetCurrentDutyStaffName();
             order.RoomNumber = NormalizeRoomNumber(order.RoomNumber);
 
             // Kiểm tra tồn kho trước khi ghi nhận đơn để tránh bán vượt tồn.
@@ -1281,11 +1184,10 @@ namespace QuanLyDichVuKhachSan.Services
                 }
             }
 
-            if (order.PaymentType == FoodPaymentType.DirectPayment)
+            if (order.PaymentType == FoodPaymentType.SeparateBill)
             {
                 order.DaThanhToan = true;
                 order.NguoiThanhToanId = order.NguoiTaoId;
-                order.PaidByStaffName = order.RecordedBy;
                 order.ThoiGianThanhToan = DateTime.Now;
                 order.Status = "Đã giao";
             }
@@ -1293,7 +1195,6 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 order.DaThanhToan = false;
                 order.NguoiThanhToanId = null;
-                order.PaidByStaffName = string.Empty;
                 order.ThoiGianThanhToan = null;
                 order.Status = "Chờ xử lý";
             }
@@ -1325,8 +1226,8 @@ namespace QuanLyDichVuKhachSan.Services
                 : "Thanh toán trực tiếp";
             
             string insertSql = @"
-                INSERT INTO DonHangMonAn (MaDon, KhachHangId, TenKhach, SoPhong, HinhThucThanhToan, TongTien, DaThanhToan, GhiChu, NguoiTaoId, NguoiThanhToanId, NguoiLap, NguoiThu, ThoiGianThanhToan, NgayTao, TrangThai)
-                VALUES (@Ma, @KhachId, @Ten, @Phong, @HTTT, @Tien, @DaTT, @Note, @NguoiTao, @NguoiTT, @NguoiLap, @NguoiThu, @ThoiGianTT, @Ngay, @TrangThai);
+                INSERT INTO DonHangMonAn (MaDon, KhachHangId, TenKhach, SoPhong, HinhThucThanhToan, TongTien, DaThanhToan, GhiChu, NguoiTaoId, NguoiThanhToanId, ThoiGianThanhToan, NgayTao, TrangThai)
+                VALUES (@Ma, @KhachId, @Ten, @Phong, @HTTT, @Tien, @DaTT, @Note, @NguoiTao, @NguoiTT, @ThoiGianTT, @Ngay, @TrangThai);
                 DECLARE @NewDonHangId INT = SCOPE_IDENTITY();";
 
             var paramList = new List<SqlParameter>
@@ -1341,8 +1242,6 @@ namespace QuanLyDichVuKhachSan.Services
                 new("@Note", order.Note ?? ""),
                 new("@NguoiTao", order.NguoiTaoId),
                 new("@NguoiTT", (object?)order.NguoiThanhToanId ?? DBNull.Value),
-                new("@NguoiLap", string.IsNullOrWhiteSpace(order.RecordedBy) ? DBNull.Value : (object)order.RecordedBy),
-                new("@NguoiThu", (order.DaThanhToan && !string.IsNullOrWhiteSpace(order.PaidByStaffName)) ? (object)order.PaidByStaffName : DBNull.Value),
                 new("@ThoiGianTT", (object?)order.ThoiGianThanhToan ?? DBNull.Value),
                 new("@Ngay", order.CreatedAt),
                 new("@TrangThai", order.Status)
@@ -1391,13 +1290,9 @@ namespace QuanLyDichVuKhachSan.Services
                     Details = $"Mã {order.OrderCode}" + (!string.IsNullOrEmpty(order.Note) ? $" ({order.Note})" : ""),
                     UsedTime = order.CreatedAt,
                     Amount = order.TotalAmount,
-                    IsPaid = order.DaThanhToan,
-                    RecordedBy = order.RecordedBy,
-                    PaidBy = order.PaidByStaffName
+                    IsPaid = order.DaThanhToan
                 });
             }
-
-            NotifyTransactionsChanged();
         }
 
         public void AddInventoryBatch(InventoryBatch batch)
@@ -1468,20 +1363,18 @@ namespace QuanLyDichVuKhachSan.Services
             booking.BookingCode = $"SK-2026-{booking.Id:D3}";
             booking.RoomNumber = NormalizeRoomNumber(booking.RoomNumber);
             booking.NguoiTaoId = GetCurrentDutyStaffId();
-            booking.RecordedBy = GetCurrentActorName();
+            booking.RecordedBy = GetCurrentDutyStaffName();
 
             if (booking.PaymentStatus == "Đã thanh toán full" || booking.PaymentStatus == "Hoàn tất")
             {
                 booking.DaThanhToan = true;
                 booking.NguoiThanhToanId = booking.NguoiTaoId;
-                booking.PaidByStaffName = booking.RecordedBy;
                 booking.ThoiGianThanhToan = DateTime.Now;
             }
             else
             {
                 booking.DaThanhToan = false;
                 booking.NguoiThanhToanId = null;
-                booking.PaidByStaffName = string.Empty;
                 booking.ThoiGianThanhToan = null;
             }
 
@@ -1499,8 +1392,8 @@ namespace QuanLyDichVuKhachSan.Services
 
             // Đồng bộ xuống CSDL SQL Server (Table DonDatSuKien)
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "INSERT INTO DonDatSuKien (MaDon, KhuVucId, KhachHangId, TenKhach, SoDienThoai, SoPhong, ThoiGianBatDau, ThoiGianKetThuc, TienCoc, TongTienDuKien, ChiPhiPhatSinh, GhiChuHuHai, DaThanhToan, HinhThucThanhToanBanDau, TrangThaiDon, NguoiTaoId, NguoiThanhToanId, NguoiLap, NguoiThu, ThoiGianThanhToan, NgayTao) " +
-                "VALUES (@Ma, @KhuVucId, @KhachId, @TenKhach, @SDT, @SoPhong, @Start, @End, @Coc, @TongTien, @PhatSinh, @GhiChu, @DaTT, @HinhThucTT, @TrangThaiDon, @NguoiTao, @NguoiTT, @NguoiLap, @NguoiThu, @ThoiGianTT, @NgayTao)",
+                "INSERT INTO DonDatSuKien (MaDon, KhuVucId, KhachHangId, TenKhach, SoDienThoai, SoPhong, ThoiGianBatDau, ThoiGianKetThuc, TienCoc, TongTienDuKien, ChiPhiPhatSinh, GhiChuHuHai, DaThanhToan, HinhThucThanhToanBanDau, TrangThaiDon, NguoiTaoId, NguoiThanhToanId, ThoiGianThanhToan, NgayTao) " +
+                "VALUES (@Ma, @KhuVucId, @KhachId, @TenKhach, @SDT, @SoPhong, @Start, @End, @Coc, @TongTien, @PhatSinh, @GhiChu, @DaTT, @HinhThucTT, @TrangThaiDon, @NguoiTao, @NguoiTT, @ThoiGianTT, @NgayTao)",
                 new SqlParameter("@Ma", booking.BookingCode),
                 new SqlParameter("@KhuVucId", booking.SpaceId),
                 new SqlParameter("@KhachId", (object?)booking.KhachHangId ?? DBNull.Value),
@@ -1518,8 +1411,6 @@ namespace QuanLyDichVuKhachSan.Services
                 new SqlParameter("@TrangThaiDon", orderStatus),
                 new SqlParameter("@NguoiTao", booking.NguoiTaoId),
                 new SqlParameter("@NguoiTT", (object?)booking.NguoiThanhToanId ?? DBNull.Value),
-                new SqlParameter("@NguoiLap", string.IsNullOrWhiteSpace(booking.RecordedBy) ? DBNull.Value : (object)booking.RecordedBy),
-                new SqlParameter("@NguoiThu", (booking.DaThanhToan && !string.IsNullOrWhiteSpace(booking.PaidByStaffName)) ? (object)booking.PaidByStaffName : DBNull.Value),
                 new SqlParameter("@ThoiGianTT", (object?)booking.ThoiGianThanhToan ?? DBNull.Value),
                 new SqlParameter("@NgayTao", booking.CreatedAt)
             );
@@ -1527,23 +1418,18 @@ namespace QuanLyDichVuKhachSan.Services
             // Đồng bộ sang sơ đồ phòng
             if (!string.IsNullOrEmpty(booking.RoomNumber))
             {
-                decimal usageAmt = booking.DaThanhToan ? booking.FinalTotal : Math.Max(0, booking.FinalTotal - booking.DepositAmount);
                 RoomServiceUsages.Insert(0, new RoomServiceUsageItem
                 {
                     Id = RoomServiceUsages.Count > 0 ? RoomServiceUsages.Max(x => x.Id) + 1 : 1,
                     RoomNumber = booking.RoomNumber,
                     ServiceCategory = "Sự kiện",
                     ServiceName = $"Thuê {booking.SpaceName}",
-                    Details = $"Mã {booking.BookingCode}" + (booking.DepositAmount > 0 && !booking.DaThanhToan ? $" (Đã cọc {booking.DepositAmount:N0}đ)" : ""),
+                    Details = $"Mã {booking.BookingCode} (Đã cọc {booking.DepositAmount:N0}đ)",
                     UsedTime = booking.StartTime,
-                    Amount = usageAmt,
-                    IsPaid = booking.DaThanhToan,
-                    RecordedBy = booking.RecordedBy,
-                    PaidBy = booking.PaidByStaffName
+                    Amount = booking.FinalTotal - booking.DepositAmount,
+                    IsPaid = booking.DaThanhToan
                 });
             }
-
-            NotifyTransactionsChanged();
         }
 
         public void AddVehicleRental(VehicleRental rental)
@@ -1552,7 +1438,7 @@ namespace QuanLyDichVuKhachSan.Services
             rental.RentalCode = $"TX-2026-{rental.Id:D3}";
             rental.RoomNumber = NormalizeRoomNumber(rental.RoomNumber);
             rental.NguoiTaoId = GetCurrentDutyStaffId();
-            rental.RecordedBy = GetCurrentActorName();
+            rental.RecordedBy = GetCurrentDutyStaffName();
 
             string initialPay = !string.IsNullOrEmpty(rental.InitialPaymentType)
                 ? rental.InitialPaymentType
@@ -1569,14 +1455,13 @@ namespace QuanLyDichVuKhachSan.Services
 
             if (rental.DaThanhToan)
             {
-                rental.NguoiThanhToanId = rental.NguoiTaoId;
+                rental.NguoiThanhToanId ??= rental.NguoiTaoId;
                 rental.ThoiGianThanhToan ??= DateTime.Now;
-                rental.PaidByStaffName = rental.RecordedBy;
+                rental.PaidByStaffName = string.IsNullOrWhiteSpace(rental.PaidByStaffName) ? rental.RecordedBy : rental.PaidByStaffName;
             }
             else
             {
                 rental.NguoiThanhToanId = null;
-                rental.PaidByStaffName = string.Empty;
                 rental.ThoiGianThanhToan = null;
             }
 
@@ -1590,8 +1475,8 @@ namespace QuanLyDichVuKhachSan.Services
 
             // Đồng bộ xuống CSDL SQL Server (Table DonThueXe)
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "INSERT INTO DonThueXe (MaDon, XeId, KhachHangId, TenKhach, CCCD, SoDienThoai, SoPhong, NgayThue, NgayTraDuKien, TienCoc, TienThue, ChiPhiPhatSinh, TongTienThanhToan, DaThanhToan, GhiChuKhiNhanXe, GhiChuHuHai, HinhThucThanhToanBanDau, TrangThaiDon, NguoiTaoId, NguoiThanhToanId, NguoiLap, NguoiThu, ThoiGianThanhToan, NgayTao) " +
-                "VALUES (@Ma, @XeId, @KhachId, @Ten, @CCCD, @SDT, @Phong, @NgayThue, @NgayTra, @Coc, @TienThue, @PhatSinh, @TongTien, @DaTT, @GhiChuNhan, @GhiChu, @HinhThucTT, @TrangThaiDon, @NguoiTao, @NguoiTT, @NguoiLap, @NguoiThu, @ThoiGianTT, @NgayTao);",
+                "INSERT INTO DonThueXe (MaDon, XeId, KhachHangId, TenKhach, CCCD, SoDienThoai, SoPhong, NgayThue, NgayTraDuKien, TienCoc, TienThue, ChiPhiPhatSinh, TongTienThanhToan, DaThanhToan, GhiChuKhiNhanXe, GhiChuHuHai, HinhThucThanhToanBanDau, TrangThaiDon, NguoiTaoId, NguoiThanhToanId, ThoiGianThanhToan, NgayTao) " +
+                "VALUES (@Ma, @XeId, @KhachId, @Ten, @CCCD, @SDT, @Phong, @NgayThue, @NgayTra, @Coc, @TienThue, @PhatSinh, @TongTien, @DaTT, @GhiChuNhan, @GhiChu, @HinhThucTT, @TrangThaiDon, @NguoiTao, @NguoiTT, @ThoiGianTT, @NgayTao);",
                 new SqlParameter("@Ma", rental.RentalCode),
                 new SqlParameter("@XeId", rental.VehicleId),
                 new SqlParameter("@KhachId", (object?)rental.KhachHangId ?? DBNull.Value),
@@ -1612,8 +1497,6 @@ namespace QuanLyDichVuKhachSan.Services
                 new SqlParameter("@TrangThaiDon", orderStatus),
                 new SqlParameter("@NguoiTao", rental.NguoiTaoId),
                 new SqlParameter("@NguoiTT", (rental.DaThanhToan && rental.NguoiThanhToanId.HasValue) ? (object)rental.NguoiThanhToanId.Value : (rental.DaThanhToan ? (object)rental.NguoiTaoId : DBNull.Value)),
-                new SqlParameter("@NguoiLap", string.IsNullOrWhiteSpace(rental.RecordedBy) ? DBNull.Value : (object)rental.RecordedBy),
-                new SqlParameter("@NguoiThu", (rental.DaThanhToan && !string.IsNullOrWhiteSpace(rental.PaidByStaffName)) ? (object)rental.PaidByStaffName : DBNull.Value),
                 new SqlParameter("@ThoiGianTT", rental.DaThanhToan ? (object)(rental.ThoiGianThanhToan ?? rental.CreatedAt) : DBNull.Value),
                 new SqlParameter("@NgayTao", rental.CreatedAt)
             );
@@ -1632,13 +1515,9 @@ namespace QuanLyDichVuKhachSan.Services
                     Details = $"Mã {rental.RentalCode} (BS: {rental.LicensePlate})",
                     UsedTime = rental.RentalDate,
                     Amount = usageAmt,
-                    IsPaid = rental.DaThanhToan,
-                    RecordedBy = rental.RecordedBy,
-                    PaidBy = rental.PaidByStaffName
+                    IsPaid = rental.DaThanhToan
                 });
             }
-
-            NotifyTransactionsChanged();
         }
 
         public void CompleteEventBooking(EventBooking booking, decimal additionalCost, string damageNote, bool isRoomCharge = false, string paymentMethod = "Tiền mặt")
@@ -1657,7 +1536,7 @@ namespace QuanLyDichVuKhachSan.Services
             else
             {
                 booking.NguoiThanhToanId = GetCurrentDutyStaffId();
-                booking.PaidByStaffName = GetCurrentActorName();
+                booking.PaidByStaffName = GetCurrentDutyStaffName();
                 booking.ThoiGianThanhToan = DateTime.Now;
             }
 
@@ -1668,14 +1547,13 @@ namespace QuanLyDichVuKhachSan.Services
                 ghiChuLuuDb = string.IsNullOrWhiteSpace(ghiChuLuuDb) ? "[Ghi nợ vào phòng]" : $"[Ghi nợ vào phòng] {ghiChuLuuDb}";
             }
 
-            // Cập nhật CSDL ngay lập tức (giữ nguyên NguoiLap ban đầu, chỉ cập nhật NguoiThu khi thu tiền)
+            // Cập nhật CSDL ngay lập tức (không trì hoãn)
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "UPDATE DonDatSuKien SET ChiPhiPhatSinh = @ChiPhiPhatSinh, DaThanhToan = @DaThanhToan, TrangThaiDon = N'Hoàn tất', GhiChuHuHai = @GhiChuHuHai, NguoiThanhToanId = @NguoiThanhToanId, NguoiThu = @NguoiThu, ThoiGianThanhToan = @ThoiGianThanhToan WHERE MaDon = @MaDon;",
+                "UPDATE DonDatSuKien SET ChiPhiPhatSinh = @ChiPhiPhatSinh, DaThanhToan = @DaThanhToan, TrangThaiDon = N'Hoàn tất', GhiChuHuHai = @GhiChuHuHai, NguoiThanhToanId = @NguoiThanhToanId, ThoiGianThanhToan = @ThoiGianThanhToan WHERE MaDon = @MaDon;",
                 new SqlParameter("@ChiPhiPhatSinh", booking.AdditionalCost),
                 new SqlParameter("@DaThanhToan", booking.DaThanhToan ? 1 : 0),
                 new SqlParameter("@GhiChuHuHai", ghiChuLuuDb),
                 new SqlParameter("@NguoiThanhToanId", (object?)booking.NguoiThanhToanId ?? DBNull.Value),
-                new SqlParameter("@NguoiThu", (booking.DaThanhToan && !string.IsNullOrWhiteSpace(booking.PaidByStaffName)) ? (object)booking.PaidByStaffName : DBNull.Value),
                 new SqlParameter("@ThoiGianThanhToan", (object?)booking.ThoiGianThanhToan ?? DBNull.Value),
                 new SqlParameter("@MaDon", booking.BookingCode)
             );
@@ -1691,7 +1569,6 @@ namespace QuanLyDichVuKhachSan.Services
                     usage.Amount = isRoomCharge ? remainingCost : booking.FinalTotal;
                     usage.IsPaid = !isRoomCharge;
                     usage.PaymentMethod = hinhThucTT;
-                    usage.PaidBy = booking.PaidByStaffName;
                 }
                 else
                 {
@@ -1705,14 +1582,10 @@ namespace QuanLyDichVuKhachSan.Services
                         UsedTime = booking.StartTime,
                         Amount = isRoomCharge ? remainingCost : booking.FinalTotal,
                         IsPaid = !isRoomCharge,
-                        PaymentMethod = hinhThucTT,
-                        RecordedBy = booking.RecordedBy,
-                        PaidBy = booking.PaidByStaffName
+                        PaymentMethod = hinhThucTT
                     });
                 }
             }
-
-            NotifyTransactionsChanged();
         }
 
         public void ReturnVehicle(VehicleRental rental, decimal additionalCost, string damageNote, bool isRoomCharge = false, string paymentMethod = "Tiền mặt")
@@ -1734,7 +1607,7 @@ namespace QuanLyDichVuKhachSan.Services
             else
             {
                 rental.NguoiThanhToanId = GetCurrentDutyStaffId();
-                rental.PaidByStaffName = GetCurrentActorName();
+                rental.PaidByStaffName = GetCurrentDutyStaffName();
                 rental.ThoiGianThanhToan = DateTime.Now;
             }
 
@@ -1759,16 +1632,15 @@ namespace QuanLyDichVuKhachSan.Services
                 ghiChuLuuDb = string.IsNullOrWhiteSpace(ghiChuLuuDb) ? "[Ghi nợ vào phòng]" : $"[Ghi nợ vào phòng] {ghiChuLuuDb}";
             }
 
-            // Đồng bộ cập nhật DonThueXe & XeChoThue ngay lập tức (giữ nguyên NguoiLap ban đầu, cập nhật NguoiThu)
+            // Đồng bộ cập nhật DonThueXe & XeChoThue ngay lập tức
             SyncVehicleFleetStatus();
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "UPDATE DonThueXe SET NgayTraThucTe = @NgayTra, ChiPhiPhatSinh = @PhatSinh, TongTienThanhToan = @TongTien, DaThanhToan = @DaTT, NguoiThanhToanId = @NguoiTT, NguoiThu = @NguoiThu, ThoiGianThanhToan = @ThoiGianTT, GhiChuHuHai = @GhiChu, TrangThaiDon = N'Hoàn tất' WHERE MaDon = @Ma; UPDATE XeChoThue SET TrangThai = N'Hoạt động' WHERE Id = @XeId AND TrangThai NOT IN (N'Bảo trì', N'Ngừng khai thác');",
+                "UPDATE DonThueXe SET NgayTraThucTe = @NgayTra, ChiPhiPhatSinh = @PhatSinh, TongTienThanhToan = @TongTien, DaThanhToan = @DaTT, NguoiThanhToanId = @NguoiTT, ThoiGianThanhToan = @ThoiGianTT, GhiChuHuHai = @GhiChu, TrangThaiDon = N'Hoàn tất' WHERE MaDon = @Ma; UPDATE XeChoThue SET TrangThai = N'Hoạt động' WHERE Id = @XeId AND TrangThai NOT IN (N'Bảo trì', N'Ngừng khai thác');",
                 new SqlParameter("@NgayTra", rental.ActualReturnDate ?? DateTime.Now),
                 new SqlParameter("@PhatSinh", rental.AdditionalCost),
                 new SqlParameter("@TongTien", rental.TotalPayment),
                 new SqlParameter("@DaTT", rental.DaThanhToan ? 1 : 0),
                 new SqlParameter("@NguoiTT", (object?)rental.NguoiThanhToanId ?? DBNull.Value),
-                new SqlParameter("@NguoiThu", (rental.DaThanhToan && !string.IsNullOrWhiteSpace(rental.PaidByStaffName)) ? (object)rental.PaidByStaffName : DBNull.Value),
                 new SqlParameter("@ThoiGianTT", (object?)rental.ThoiGianThanhToan ?? DBNull.Value),
                 new SqlParameter("@GhiChu", ghiChuLuuDb),
                 new SqlParameter("@Ma", rental.RentalCode),
@@ -1785,7 +1657,6 @@ namespace QuanLyDichVuKhachSan.Services
                     usage.Amount = isRoomCharge ? remainingCost : rental.TotalPayment;
                     usage.IsPaid = !isRoomCharge;
                     usage.PaymentMethod = hinhThucTT;
-                    usage.PaidBy = rental.PaidByStaffName;
                 }
                 else
                 {
@@ -1799,14 +1670,10 @@ namespace QuanLyDichVuKhachSan.Services
                         UsedTime = rental.RentalDate,
                         Amount = isRoomCharge ? remainingCost : rental.TotalPayment,
                         IsPaid = !isRoomCharge,
-                        PaymentMethod = hinhThucTT,
-                        RecordedBy = rental.RecordedBy,
-                        PaidBy = rental.PaidByStaffName
+                        PaymentMethod = hinhThucTT
                     });
                 }
             }
-
-            NotifyTransactionsChanged();
         }
 
         public void AddParkingRecord(ParkingRecord record)
@@ -1815,30 +1682,14 @@ namespace QuanLyDichVuKhachSan.Services
             record.TicketCode = $"VE-DX-{record.Id:D3}";
             record.RoomNumber = NormalizeRoomNumber(record.RoomNumber);
             record.NguoiTaoId = GetCurrentDutyStaffId();
-            record.RecordedBy = GetCurrentActorName();
+            record.RecordedBy = GetCurrentDutyStaffName();
 
             if (record.ChargeType == ParkingChargeType.ResidentFree)
             {
                 record.ParkingFee = 0;
                 record.DaThanhToan = true;
-                record.IsPaid = true;
                 record.NguoiThanhToanId = record.NguoiTaoId;
-                record.PaidByStaffName = record.RecordedBy;
                 record.ThoiGianThanhToan = DateTime.Now;
-            }
-            else if (record.DaThanhToan)
-            {
-                record.IsPaid = true;
-                record.NguoiThanhToanId = record.NguoiTaoId;
-                record.PaidByStaffName = record.RecordedBy;
-                record.ThoiGianThanhToan ??= DateTime.Now;
-            }
-            else
-            {
-                record.IsPaid = false;
-                record.NguoiThanhToanId = null;
-                record.PaidByStaffName = string.Empty;
-                record.ThoiGianThanhToan = null;
             }
 
             ParkingRecords.Insert(0, record);
@@ -1851,8 +1702,8 @@ namespace QuanLyDichVuKhachSan.Services
 
             // Đồng bộ xuống CSDL SQL Server (Table BaiDoXe)
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "INSERT INTO BaiDoXe (MaVe, BienSoXe, LoaiXe, TenKhach, SoDienThoai, SoPhong, ThoiGianVao, HinhThucGui, PhiGui, DaThanhToan, GhiChuSuaChua, NguoiTaoId, NguoiThanhToanId, NguoiLap, NguoiThu, ThoiGianThanhToan) " +
-                "VALUES (@Ma, @BienSo, @Loai, @Ten, @SDT, @Phong, @Vao, @HinhThuc, @Phi, @DaTT, @GhiChu, @NguoiTao, @NguoiTT, @NguoiLap, @NguoiThu, @ThoiGianTT)",
+                "INSERT INTO BaiDoXe (MaVe, BienSoXe, LoaiXe, TenKhach, SoDienThoai, SoPhong, ThoiGianVao, HinhThucGui, PhiGui, DaThanhToan, GhiChuSuaChua, NguoiTaoId, NguoiThanhToanId, ThoiGianThanhToan) " +
+                "VALUES (@Ma, @BienSo, @Loai, @Ten, @SDT, @Phong, @Vao, @HinhThuc, @Phi, @DaTT, @GhiChu, @NguoiTao, @NguoiTT, @ThoiGianTT)",
                 new SqlParameter("@Ma", record.TicketCode),
                 new SqlParameter("@BienSo", record.LicensePlate),
                 new SqlParameter("@Loai", vType),
@@ -1866,8 +1717,6 @@ namespace QuanLyDichVuKhachSan.Services
                 new SqlParameter("@GhiChu", record.RepairNote ?? ""),
                 new SqlParameter("@NguoiTao", record.NguoiTaoId),
                 new SqlParameter("@NguoiTT", (object?)record.NguoiThanhToanId ?? DBNull.Value),
-                new SqlParameter("@NguoiLap", string.IsNullOrWhiteSpace(record.RecordedBy) ? DBNull.Value : (object)record.RecordedBy),
-                new SqlParameter("@NguoiThu", (record.DaThanhToan && !string.IsNullOrWhiteSpace(record.PaidByStaffName)) ? (object)record.PaidByStaffName : DBNull.Value),
                 new SqlParameter("@ThoiGianTT", (object?)record.ThoiGianThanhToan ?? DBNull.Value)
             );
 
@@ -1882,44 +1731,9 @@ namespace QuanLyDichVuKhachSan.Services
                     Details = $"Mã vé {record.TicketCode} (BS: {record.LicensePlate})",
                     UsedTime = record.CheckInTime,
                     Amount = record.ParkingFee,
-                    IsPaid = record.DaThanhToan,
-                    RecordedBy = record.RecordedBy,
-                    PaidBy = record.PaidByStaffName
+                    IsPaid = record.DaThanhToan
                 });
             }
-
-            NotifyTransactionsChanged();
-        }
-
-        public void CompleteParkingCheckout(ParkingRecord record, decimal fee, DateTime outTime)
-        {
-            if (record == null) return;
-
-            int dutyStaffId = GetCurrentDutyStaffId();
-            string cashierName = GetCurrentActorName();
-            DateTime payTime = DateTime.Now;
-
-            record.CheckOutTime = outTime;
-            record.ParkingFee = fee;
-            record.DaThanhToan = true;
-            record.IsPaid = true;
-            record.NguoiThanhToanId = dutyStaffId;
-            record.PaidByStaffName = cashierName;
-            record.ThoiGianThanhToan = payTime;
-
-            _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "UPDATE BaiDoXe SET ThoiGianRa = @Out, PhiGui = @Phi, DaThanhToan = 1, NguoiThanhToanId = @NguoiTT, NguoiThu = @NguoiThu, ThoiGianThanhToan = @TgTT WHERE (Id = @Id AND @Id > 0) OR MaVe = @Ma",
-                new SqlParameter("@Out", record.CheckOutTime),
-                new SqlParameter("@Phi", record.ParkingFee),
-                new SqlParameter("@NguoiTT", record.NguoiThanhToanId),
-                new SqlParameter("@NguoiThu", cashierName),
-                new SqlParameter("@TgTT", payTime),
-                new SqlParameter("@Id", record.Id),
-                new SqlParameter("@Ma", record.TicketCode)
-            );
-
-            ParkingRecordsChanged?.Invoke();
-            NotifyTransactionsChanged();
         }
 
         public void AddLaundryOrder(LaundryOrder order, LaundryPartner? partner = null)
@@ -1928,20 +1742,7 @@ namespace QuanLyDichVuKhachSan.Services
             order.OrderCode = $"DH-GU-{order.Id:D3}";
             order.RoomNumber = NormalizeRoomNumber(order.RoomNumber);
             order.NguoiTaoId = GetCurrentDutyStaffId();
-            order.RecordedBy = GetCurrentActorName();
-
-            if (order.DaThanhToan)
-            {
-                order.NguoiThanhToanId = order.NguoiTaoId;
-                order.PaidByStaffName = order.RecordedBy;
-                order.ThoiGianThanhToan ??= DateTime.Now;
-            }
-            else
-            {
-                order.NguoiThanhToanId = null;
-                order.PaidByStaffName = string.Empty;
-                order.ThoiGianThanhToan = null;
-            }
+            order.RecordedBy = GetCurrentDutyStaffName();
 
             if (partner != null && partner.Id > 0)
             {
@@ -1976,8 +1777,8 @@ namespace QuanLyDichVuKhachSan.Services
 
             // Đồng bộ xuống CSDL SQL Server (Table DonGiatUi)
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "INSERT INTO DonGiatUi (MaDon, KhachHangId, TenKhach, SoDienThoai, SoPhong, DoiTacId, LoaiDichVu, KhoiLuongKg, DonGiaKg, TongTienThuKhach, DonGiaVonKg, TienKhachSanNhan, TienDoiTacNhan, TinhTrangQuanAoLucNhan, NgayNhan, NgayHenTra, HinhThucThanhToan, TrangThai, DaThanhToan, NguoiTaoId, NguoiThanhToanId, NguoiLap, NguoiThu, ThoiGianThanhToan) " +
-                "VALUES (@Ma, @KhachId, @Ten, @SDT, @Phong, @DoiTacId, @Loai, @Kg, @DonGia, @Tong, @DonGiaVon, @TienKS, @TienDT, @GhiChu, @Nhan, @HenTra, @HinhThucTT, @TrangThai, @DaTT, @NguoiTao, @NguoiTT, @NguoiLap, @NguoiThu, @ThoiGianTT)",
+                "INSERT INTO DonGiatUi (MaDon, KhachHangId, TenKhach, SoDienThoai, SoPhong, DoiTacId, LoaiDichVu, KhoiLuongKg, DonGiaKg, TongTienThuKhach, DonGiaVonKg, TienKhachSanNhan, TienDoiTacNhan, TinhTrangQuanAoLucNhan, NgayNhan, NgayHenTra, HinhThucThanhToan, TrangThai, DaThanhToan, NguoiTaoId, NguoiThanhToanId, ThoiGianThanhToan) " +
+                "VALUES (@Ma, @KhachId, @Ten, @SDT, @Phong, @DoiTacId, @Loai, @Kg, @DonGia, @Tong, @DonGiaVon, @TienKS, @TienDT, @GhiChu, @Nhan, @HenTra, @HinhThucTT, @TrangThai, @DaTT, @NguoiTao, @NguoiTT, @ThoiGianTT)",
                 new SqlParameter("@Ma", order.OrderCode),
                 new SqlParameter("@KhachId", (object?)order.KhachHangId ?? DBNull.Value),
                 new SqlParameter("@Ten", order.CustomerName),
@@ -1999,8 +1800,6 @@ namespace QuanLyDichVuKhachSan.Services
                 new SqlParameter("@DaTT", order.DaThanhToan ? 1 : 0),
                 new SqlParameter("@NguoiTao", order.NguoiTaoId),
                 new SqlParameter("@NguoiTT", (object?)order.NguoiThanhToanId ?? DBNull.Value),
-                new SqlParameter("@NguoiLap", string.IsNullOrWhiteSpace(order.RecordedBy) ? DBNull.Value : (object)order.RecordedBy),
-                new SqlParameter("@NguoiThu", (order.DaThanhToan && !string.IsNullOrWhiteSpace(order.PaidByStaffName)) ? (object)order.PaidByStaffName : DBNull.Value),
                 new SqlParameter("@ThoiGianTT", (object?)order.ThoiGianThanhToan ?? DBNull.Value)
             );
 
@@ -2015,13 +1814,9 @@ namespace QuanLyDichVuKhachSan.Services
                     Details = $"Mã {order.OrderCode} ({order.PaymentMethod})",
                     UsedTime = order.ReceivedDate,
                     Amount = order.TotalPrice,
-                    IsPaid = order.DaThanhToan,
-                    RecordedBy = order.RecordedBy,
-                    PaidBy = order.PaidByStaffName
+                    IsPaid = order.DaThanhToan
                 });
             }
-
-            NotifyTransactionsChanged();
         }
 
         public void AssignPartnerToLaundryOrder(LaundryOrder order, LaundryPartner partner)
@@ -2113,9 +1908,7 @@ namespace QuanLyDichVuKhachSan.Services
                         Details = $"Chi phí phát sinh: +{extraCost:N0} đ",
                         UsedTime = DateTime.Now,
                         Amount = extraCost,
-                        IsPaid = order.DaThanhToan,
-                        RecordedBy = order.RecordedBy,
-                        PaidBy = order.PaidByStaffName
+                        IsPaid = order.DaThanhToan
                     });
                 }
             }
@@ -2132,23 +1925,16 @@ namespace QuanLyDichVuKhachSan.Services
                 order.LyDoDenBu,
                 staffId
             );
-
-            NotifyTransactionsChanged();
         }
 
         public bool CancelLaundryOrder(LaundryOrder order)
         {
             if (order == null || order.Status != LaundryStatus.PendingDispatch) return false;
 
-            bool wasPaid = order.DaThanhToan;
             order.Status = LaundryStatus.Cancelled;
-            order.DaThanhToan = false;
-            order.NguoiThanhToanId = null;
-            order.PaidByStaffName = string.Empty;
-            order.ThoiGianThanhToan = null;
 
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "UPDATE DonGiatUi SET TrangThai = N'Đã hủy', DaThanhToan = 0, NguoiThanhToanId = NULL, NguoiThu = NULL, ThoiGianThanhToan = NULL WHERE MaDon = @MaDon OR (Id = @Id AND @Id > 0)",
+                "UPDATE DonGiatUi SET TrangThai = N'Đã hủy' WHERE MaDon = @MaDon OR (Id = @Id AND @Id > 0)",
                 new SqlParameter("@MaDon", order.OrderCode),
                 new SqlParameter("@Id", order.Id)
             );
@@ -2156,7 +1942,7 @@ namespace QuanLyDichVuKhachSan.Services
             if (!string.IsNullOrEmpty(order.RoomNumber))
             {
                 string norm = NormalizeRoomNumber(order.RoomNumber);
-                if (!wasPaid)
+                if (!order.DaThanhToan)
                 {
                     // Xóa dòng ghi nợ dịch vụ giặt ủi của đơn này khỏi danh sách dịch vụ phòng
                     var existingUsage = RoomServiceUsages.FirstOrDefault(x =>
@@ -2184,13 +1970,12 @@ namespace QuanLyDichVuKhachSan.Services
                         UsedTime = DateTime.Now,
                         Amount = -order.TotalPrice,
                         IsPaid = false,
-                        RecordedBy = GetCurrentActorName()
+                        RecordedBy = GetCurrentDutyStaffName()
                     });
                 }
             }
 
             NotificationService.Instance.AddNotification("Hủy Đơn Giặt Ủi", $"Đã hủy đơn giặt [{order.OrderCode}] phòng [{order.RoomNumber}] thành công.", NotificationType.SystemAlert);
-            NotifyTransactionsChanged();
             return true;
         }
 
@@ -2207,121 +1992,80 @@ namespace QuanLyDichVuKhachSan.Services
                 .ToList();
         }
 
-        public (bool Success, List<RoomServiceUsageItem> PaidItems, decimal RoomCost, decimal ServicesCost, decimal TotalAmount) PayRoomServices(string roomNumber, bool includeRoomCharge, string? invoiceCode = null)
+        public (bool Success, List<RoomServiceUsageItem> PaidItems, decimal RoomCost, decimal ServicesCost, decimal TotalAmount) PayRoomServices(string roomNumber, bool includeRoomCharge)
         {
             string norm = NormalizeRoomNumber(roomNumber);
             if (string.IsNullOrEmpty(norm)) return (false, new List<RoomServiceUsageItem>(), 0, 0, 0);
 
             var unpaidList = RoomServiceUsages
-                .Where(x => string.Equals(NormalizeRoomNumber(x.RoomNumber), norm, StringComparison.OrdinalIgnoreCase) && !x.IsPaid)
+                .Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.IsPaid)
                 .ToList();
 
-            var room = HotelRooms.FirstOrDefault(x => string.Equals(NormalizeRoomNumber(x.RoomNumber), norm, StringComparison.OrdinalIgnoreCase));
+            var room = HotelRooms.FirstOrDefault(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase));
             decimal servicesCost = unpaidList.Sum(x => x.Amount);
             decimal roomCost = includeRoomCharge ? (room?.StayNights ?? 1) * (room?.PricePerNight ?? 0) : 0;
             decimal grandTotal = roomCost + servicesCost;
             int staffId = GetCurrentDutyStaffId();
-            string staffName = GetCurrentActorName();
-            DateTime payTime = DateTime.Now;
+            string staffName = GetCurrentDutyStaffName();
 
             // Chỉ ghi nhận thanh toán khi SQL Server xác nhận thành công.
             if (!DatabaseService.Instance.ConfirmRoomPayment(norm, staffId))
                 return (false, unpaidList, roomCost, servicesCost, grandTotal);
 
             foreach (var item in unpaidList)
-            {
                 item.IsPaid = true;
-                item.PaidBy = staffName;
-            }
 
-            var unpaidDetails = unpaidList.Select(u => u.Details ?? "").ToList();
-
-            // Cập nhật trạng thái thu tiền & tên thu ngân cho từng đơn thuộc phòng (giữ nguyên NguoiLap ban đầu).
-            foreach (var food in FoodOrders.Where(x => string.Equals(NormalizeRoomNumber(x.RoomNumber), norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && x.Status != "Đã hủy"))
+            // Thanh toán không đồng nghĩa với việc dịch vụ đã hoàn tất.
+            foreach (var food in FoodOrders.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && x.Status != "Đã hủy"))
             {
                 food.DaThanhToan = true;
                 food.NguoiThanhToanId = staffId;
                 food.PaidByStaffName = staffName;
-                food.ThoiGianThanhToan = payTime;
-
-                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                    "UPDATE DonHangMonAn SET DaThanhToan = 1, NguoiThanhToanId = @StaffId, NguoiThu = @NguoiThu, ThoiGianThanhToan = @PayTime WHERE MaDon = @Ma",
-                    new SqlParameter("@StaffId", staffId),
-                    new SqlParameter("@NguoiThu", staffName),
-                    new SqlParameter("@PayTime", payTime),
-                    new SqlParameter("@Ma", food.OrderCode));
+                food.ThoiGianThanhToan = DateTime.Now;
             }
-            foreach (var sk in EventBookings.Where(x => string.Equals(NormalizeRoomNumber(x.RoomNumber), norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy")) && (x.StartTime <= DateTime.Now || unpaidDetails.Any(d => d.Contains(x.BookingCode)))))
+            foreach (var sk in EventBookings.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy")) && x.StartTime <= DateTime.Now))
             {
                 sk.DaThanhToan = true;
                 sk.NguoiThanhToanId = staffId;
                 sk.PaidByStaffName = staffName;
-                sk.ThoiGianThanhToan = payTime;
+                sk.ThoiGianThanhToan = DateTime.Now;
                 sk.PaymentStatus = "Hoàn tất";
-
-                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                    "UPDATE DonDatSuKien SET DaThanhToan = 1, NguoiThanhToanId = @StaffId, NguoiThu = @NguoiThu, ThoiGianThanhToan = @PayTime WHERE MaDon = @Ma",
-                    new SqlParameter("@StaffId", staffId),
-                    new SqlParameter("@NguoiThu", staffName),
-                    new SqlParameter("@PayTime", payTime),
-                    new SqlParameter("@Ma", sk.BookingCode));
             }
-            foreach (var tx in VehicleRentals.Where(x => string.Equals(NormalizeRoomNumber(x.RoomNumber), norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy")) && (x.Status == null || !x.Status.StartsWith("Đã hủy")) && (x.RentalDate <= DateTime.Now || unpaidDetails.Any(d => d.Contains(x.RentalCode)))))
+            foreach (var tx in VehicleRentals.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && (x.OrderStatus == null || !x.OrderStatus.StartsWith("Đã hủy")) && (x.Status == null || !x.Status.StartsWith("Đã hủy")) && x.RentalDate <= DateTime.Now))
             {
                 tx.DaThanhToan = true;
                 tx.NguoiThanhToanId = staffId;
                 tx.PaidByStaffName = staffName;
-                tx.ThoiGianThanhToan = payTime;
+                tx.ThoiGianThanhToan = DateTime.Now;
                 tx.PaymentStatus = "Hoàn tất";
-
-                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                    "UPDATE DonThueXe SET DaThanhToan = 1, NguoiThanhToanId = @StaffId, NguoiThu = @NguoiThu, ThoiGianThanhToan = @PayTime WHERE MaDon = @Ma",
-                    new SqlParameter("@StaffId", staffId),
-                    new SqlParameter("@NguoiThu", staffName),
-                    new SqlParameter("@PayTime", payTime),
-                    new SqlParameter("@Ma", tx.RentalCode));
             }
-            foreach (var laundry in LaundryOrders.Where(x => string.Equals(NormalizeRoomNumber(x.RoomNumber), norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && x.Status != LaundryStatus.Cancelled))
+            foreach (var laundry in LaundryOrders.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan && x.Status != LaundryStatus.Cancelled))
             {
                 laundry.DaThanhToan = true;
                 laundry.NguoiThanhToanId = staffId;
                 laundry.PaidByStaffName = staffName;
-                laundry.ThoiGianThanhToan = payTime;
-
-                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                    "UPDATE DonGiatUi SET DaThanhToan = 1, NguoiThanhToanId = @StaffId, NguoiThu = @NguoiThu, ThoiGianThanhToan = @PayTime WHERE MaDon = @Ma",
-                    new SqlParameter("@StaffId", staffId),
-                    new SqlParameter("@NguoiThu", staffName),
-                    new SqlParameter("@PayTime", payTime),
-                    new SqlParameter("@Ma", laundry.OrderCode));
+                laundry.ThoiGianThanhToan = DateTime.Now;
             }
-            foreach (var parking in ParkingRecords.Where(x => string.Equals(NormalizeRoomNumber(x.RoomNumber), norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan))
+            foreach (var parking in ParkingRecords.Where(x => string.Equals(x.RoomNumber, norm, StringComparison.OrdinalIgnoreCase) && !x.DaThanhToan))
             {
                 parking.DaThanhToan = true;
                 parking.NguoiThanhToanId = staffId;
                 parking.PaidByStaffName = staffName;
-                parking.ThoiGianThanhToan = payTime;
-
-                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                    "UPDATE BaiDoXe SET DaThanhToan = 1, NguoiThanhToanId = @StaffId, NguoiThu = @NguoiThu, ThoiGianThanhToan = @PayTime WHERE MaVe = @Ma",
-                    new SqlParameter("@StaffId", staffId),
-                    new SqlParameter("@NguoiThu", staffName),
-                    new SqlParameter("@PayTime", payTime),
-                    new SqlParameter("@Ma", parking.TicketCode));
+                parking.ThoiGianThanhToan = DateTime.Now;
             }
 
             if (unpaidList.Count > 0 || includeRoomCharge)
             {
                 var newInv = new RoomInvoice
                 {
-                    InvoiceCode = !string.IsNullOrWhiteSpace(invoiceCode) ? invoiceCode : $"HD-KS-{payTime:yyyyMMddHHmmss}-{norm}",
+                    InvoiceCode = $"HD-KS-{DateTime.Now:yyyyMMddHHmmss}-{norm}",
                     RoomNumber = room != null ? $"{room.RoomNumber} ({room.RoomType})" : norm,
                     CustomerName = room?.CustomerName ?? "Khách lưu trú",
                     PhoneNumber = room?.PhoneNumber ?? "",
                     IdentityCard = room?.IdentityCard ?? "",
-                    InvoiceDate = payTime,
-                    CheckInDate = room?.CheckInDate ?? payTime,
-                    CheckOutDate = room?.ExpectedCheckOutDate ?? payTime,
+                    InvoiceDate = DateTime.Now,
+                    CheckInDate = room?.CheckInDate ?? DateTime.Now,
+                    CheckOutDate = room?.ExpectedCheckOutDate ?? DateTime.Now,
                     StayNights = room?.StayNights ?? 1,
                     PricePerNight = room?.PricePerNight ?? 0,
                     RoomCost = roomCost,
@@ -2335,7 +2079,6 @@ namespace QuanLyDichVuKhachSan.Services
                 DatabaseService.Instance.SaveInvoice(newInv);
             }
 
-            NotifyTransactionsChanged();
             return (true, unpaidList, roomCost, servicesCost, grandTotal);
         }
 
@@ -2348,7 +2091,7 @@ namespace QuanLyDichVuKhachSan.Services
             if (string.IsNullOrEmpty(norm)) return;
 
             int staffId = GetCurrentDutyStaffId();
-            string staffName = GetCurrentActorName();
+            string staffName = GetCurrentDutyStaffName();
             var now = DateTime.Now;
 
             var parkedVehicles = ParkingRecords.Where(p =>
@@ -2366,16 +2109,14 @@ namespace QuanLyDichVuKhachSan.Services
             }
 
             _ = DatabaseService.Instance.ExecuteNonQueryAsync(
-                "UPDATE BaiDoXe SET ThoiGianRa = GETDATE(), DaThanhToan = 1, NguoiThanhToanId = @StaffId, NguoiThu = @NguoiThu, ThoiGianThanhToan = GETDATE() " +
+                "UPDATE BaiDoXe SET ThoiGianRa = GETDATE(), DaThanhToan = 1, NguoiThanhToanId = @StaffId, ThoiGianThanhToan = GETDATE() " +
                 "WHERE (SoPhong = @Room OR SoPhong = @Norm) AND ThoiGianRa IS NULL",
                 new Microsoft.Data.SqlClient.SqlParameter("@StaffId", staffId),
-                new Microsoft.Data.SqlClient.SqlParameter("@NguoiThu", staffName),
                 new Microsoft.Data.SqlClient.SqlParameter("@Room", roomNumber),
                 new Microsoft.Data.SqlClient.SqlParameter("@Norm", norm)
             );
 
             ParkingRecordsChanged?.Invoke();
-            NotifyTransactionsChanged();
         }
 
         /// <summary>
@@ -2467,9 +2208,8 @@ namespace QuanLyDichVuKhachSan.Services
                 var taskVehicleRentals = Task.Run(() => DatabaseService.Instance.LoadVehicleRentalsFromDb(dbVehicles, dbStaff));
                 var taskParking = Task.Run(() => DatabaseService.Instance.LoadParkingRecordsFromDb(dbStaff));
                 var taskLaundry = Task.Run(() => DatabaseService.Instance.LoadLaundryOrdersFromDb(dbPartners, dbStaff));
-                var taskInvoices = Task.Run(() => DatabaseService.Instance.LoadInvoicesFromDb());
 
-                Task.WaitAll(taskAssignments, taskBatches, taskFoodOrders, taskEventBookings, taskVehicleRentals, taskParking, taskLaundry, taskInvoices);
+                Task.WaitAll(taskAssignments, taskBatches, taskFoodOrders, taskEventBookings, taskVehicleRentals, taskParking, taskLaundry);
 
                 var dbAssignments = taskAssignments.Result;
                 var dbBatches = taskBatches.Result;
@@ -2478,7 +2218,6 @@ namespace QuanLyDichVuKhachSan.Services
                 var dbRentals = taskVehicleRentals.Result;
                 var dbParking = taskParking.Result;
                 var dbLaundry = taskLaundry.Result;
-                var dbInvoices = taskInvoices.Result;
 
                 App.Current?.Dispatcher?.Invoke(() =>
                 {
@@ -2586,14 +2325,8 @@ namespace QuanLyDichVuKhachSan.Services
                         LaundryOrders.Clear();
                         foreach (var lo in dbLaundry) LaundryOrders.Add(lo);
                     }
-                    if (dbInvoices != null)
-                    {
-                        RoomInvoices.Clear();
-                        foreach (var inv in dbInvoices) RoomInvoices.Add(inv);
-                    }
 
                     RebuildRoomServiceUsages();
-                    NotifyTransactionsChanged();
                 });
             }
             catch (Exception ex)
