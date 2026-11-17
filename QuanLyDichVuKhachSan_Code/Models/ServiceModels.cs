@@ -231,6 +231,22 @@ namespace QuanLyDichVuKhachSan.Models
             }
         }
 
+        // Trạng thái giao diện: món đang có trong giỏ hàng hay không.
+        // Chỉ dùng để tô màu card, không lưu xuống CSDL.
+        private bool _isInCart = false;
+        public bool IsInCart
+        {
+            get => _isInCart;
+            set
+            {
+                if (_isInCart != value)
+                {
+                    _isInCart = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsInCart)));
+                }
+            }
+        }
+
         public string DisplayIcon
         {
             get
@@ -414,6 +430,7 @@ namespace QuanLyDichVuKhachSan.Models
                     _quantity = value;
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Quantity)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TotalPrice)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanDecrease)));
                 }
             }
         }
@@ -421,6 +438,8 @@ namespace QuanLyDichVuKhachSan.Models
         public decimal Price { get; set; }
         public decimal CostPrice { get; set; } // GiaVon tại thời điểm bán
         public decimal TotalPrice => Quantity * Price;
+        public bool CanDecrease => Quantity > 1;
+        public string UnitPriceDisplay => $"{Price:N0} đ / {RetailUnit}";
         public decimal TotalCost => Quantity * CostPrice;
         public decimal Profit => TotalPrice - TotalCost;
 
