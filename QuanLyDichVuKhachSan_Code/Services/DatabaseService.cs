@@ -860,7 +860,9 @@ namespace QuanLyDichVuKhachSan.Services
                 {
                     string ddl = @"
                         IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PhieuNhapKho' AND COLUMN_NAME = 'DuongDanFileExcel')
-                            ALTER TABLE PhieuNhapKho ADD DuongDanFileExcel NVARCHAR(500) NULL;";
+                            ALTER TABLE PhieuNhapKho ADD DuongDanFileExcel NVARCHAR(500) NULL;
+                        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PhieuNhapKho' AND COLUMN_NAME = 'TenNguoiNhap')
+                            ALTER TABLE PhieuNhapKho ADD TenNguoiNhap NVARCHAR(100) NULL;";
                     using var cmd = new SqlCommand(ddl, conn);
                     cmd.ExecuteNonQuery();
                     _phieuNhapKhoColumnsChecked = true;
@@ -872,7 +874,7 @@ namespace QuanLyDichVuKhachSan.Services
         /// <summary>
         /// Lập phiếu nhập kho nhiều dòng hàng thông qua Stored Procedure: sp_LapPhieuNhapKho (TVP kieu_ChiTietNhapKho)
         /// </summary>
-        public async Task<ReceiptSaveResult> LapPhieuNhapKhoAsync(string receiptCode, int supplierId, int staffId, string note, List<WarehouseReceiptDraftItem> items)
+        public async Task<ReceiptSaveResult> LapPhieuNhapKhoAsync(string receiptCode, int supplierId, int staffId, string note, List<WarehouseReceiptDraftItem> items, string? importerName = null)
         {
             return await Task.Run(() =>
             {
@@ -970,7 +972,27 @@ namespace QuanLyDichVuKhachSan.Services
 
                         cmd.ExecuteNonQuery();
                         if (outParam.Value is int id && id > 0)
+                        {
+                            // Lưu tên người nhập dạng văn bản (snapshot) để lịch sử hiển thị đúng tên đã điền trong Excel,
+                            // kể cả khi tên không trùng danh sách nhân viên.
+                            if (!string.IsNullOrWhiteSpace(importerName))
+                            {
+                                try
+                                {
+                                    using var updateName = new SqlCommand(
+                                        "UPDATE PhieuNhapKho SET TenNguoiNhap = @TenNguoiNhap WHERE Id = @Id", conn);
+                                    updateName.Parameters.AddWithValue("@TenNguoiNhap", importerName.Trim());
+                                    updateName.Parameters.AddWithValue("@Id", id);
+                                    updateName.ExecuteNonQuery();
+                                }
+                                catch (Exception nameEx)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[TenNguoiNhap update warning]: {nameEx.Message}");
+                                }
+                            }
+
                             return new ReceiptSaveResult { ReceiptId = id, ReceiptCode = finalCode };
+                        }
                     }
                     catch (Exception spEx)
                     {
@@ -982,14 +1004,15 @@ namespace QuanLyDichVuKhachSan.Services
                     try
                     {
                         string insertHeader = @"
-                            INSERT INTO PhieuNhapKho (MaPhieuNhap, NhaCungCapId, NguoiNhapId, GhiChu)
-                            VALUES (@MaPhieuNhap, @NhaCungCapId, @NguoiNhapId, @GhiChu);
+                            INSERT INTO PhieuNhapKho (MaPhieuNhap, NhaCungCapId, NguoiNhapId, TenNguoiNhap, GhiChu)
+                            VALUES (@MaPhieuNhap, @NhaCungCapId, @NguoiNhapId, @TenNguoiNhap, @GhiChu);
                             SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
                         using var cmdHeader = new SqlCommand(insertHeader, conn, tran);
                         cmdHeader.Parameters.AddWithValue("@MaPhieuNhap", finalCode);
                         cmdHeader.Parameters.AddWithValue("@NhaCungCapId", validSupplierId);
                         cmdHeader.Parameters.AddWithValue("@NguoiNhapId", validStaffId);
+                        cmdHeader.Parameters.AddWithValue("@TenNguoiNhap", string.IsNullOrWhiteSpace(importerName) ? (object)DBNull.Value : importerName.Trim());
                         cmdHeader.Parameters.AddWithValue("@GhiChu", string.IsNullOrWhiteSpace(note) ? (object)DBNull.Value : note);
 
                         int newReceiptId = Convert.ToInt32(cmdHeader.ExecuteScalar() ?? 1);
@@ -1168,6 +1191,7 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
+                EnsurePhieuNhapKhoColumnsExist(conn);
                 string query = @"
                     SELECT 
                         ct.Id AS ChiTietId,
@@ -1182,7 +1206,7 @@ namespace QuanLyDichVuKhachSan.Services
                         ct.SoLo,
                         ct.HanSuDung,
                         pn.NgayNhap,
-                        nv.HoTen AS TenNguoiNhap,
+                        COALESCE(NULLIF(pn.TenNguoiNhap, N''), nv.HoTen, N'') AS TenNguoiNhap,
                         ncc.TenNhaCungCap,
                         ct.GhiChu
                     FROM ChiTietPhieuNhapKho ct
@@ -1254,7 +1278,7 @@ namespace QuanLyDichVuKhachSan.Services
                             pn.MaPhieuNhap,
                             pn.NgayNhap,
                             ncc.TenNhaCungCap,
-                            ISNULL(nv.HoTen, N'') AS TenNguoiNhap,
+                            COALESCE(NULLIF(pn.TenNguoiNhap, N''), nv.HoTen, N'') AS TenNguoiNhap,
                             ISNULL(pn.GhiChu, N'') AS GhiChu,
                             (SELECT COUNT(1) FROM ChiTietPhieuNhapKho ct WHERE ct.PhieuNhapId = pn.Id) AS SoDong,
                             (SELECT ISNULL(SUM(ct.SoLuongNhap * ct.DonGiaNhap), 0) FROM ChiTietPhieuNhapKho ct WHERE ct.PhieuNhapId = pn.Id) AS TongTien,

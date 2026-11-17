@@ -12,6 +12,7 @@ namespace QuanLyDichVuKhachSan.Services
     public class InventoryExcelImportResult
     {
         public string SupplierName { get; set; } = string.Empty;
+        public string ImporterName { get; set; } = string.Empty;
         public string ReceiptNote { get; set; } = string.Empty;
         public List<WarehouseReceiptDraftItem> Lines { get; } = new();
         public List<string> Errors { get; } = new();
@@ -28,8 +29,10 @@ namespace QuanLyDichVuKhachSan.Services
         private const string GuideSheetName = "HuongDan";
         private const string CatalogRangeName = "DanhMucMaHang";
         private const int TemplateRows = 200;
-        private const int HeaderRow = 7;
-        private const int DataStartRow = 8;
+        private const int HeaderRow = 6;
+        private const int DataStartRow = 7;
+
+        private enum InfoFieldKind { Input, Auto, ReadOnly }
 
         public static string ArchiveDirectory => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -38,12 +41,14 @@ namespace QuanLyDichVuKhachSan.Services
 
         #region Tạo file mẫu
 
-        public static void CreateTemplate(string filePath, IReadOnlyList<FoodItem> foodItems)
+        public static void CreateTemplate(string filePath, IReadOnlyList<FoodItem> foodItems,
+            string? defaultImporterName = null)
         {
             using var workbook = new XLWorkbook();
             var sheet = workbook.Worksheets.Add(MainSheetName);
 
-            BuildReceiptSheet(workbook, sheet, null, null, foodItems, null, isTemplate: true);
+            BuildReceiptSheet(workbook, sheet, null, null, foodItems, null,
+                isTemplate: true, defaultImporterName: defaultImporterName);
             BuildCatalogSheet(workbook, foodItems);
             BuildGuideSheet(workbook);
 
@@ -65,13 +70,23 @@ namespace QuanLyDichVuKhachSan.Services
                         ?? workbook.Worksheets.First();
 
             result.SupplierName = FindLabelValue(sheet, "Nhà cung cấp");
+            result.ImporterName = FindLabelValue(sheet, "Người nhập");
             result.ReceiptNote = FindLabelValue(sheet, "Ghi chú phiếu");
 
             if (string.IsNullOrWhiteSpace(result.SupplierName))
-                result.Errors.Add("Chưa nhập tên Nhà cung cấp ở ô B2 của file Excel.");
+                result.Errors.Add("Chưa nhập tên Nhà cung cấp trong file Excel.");
 
             if (result.SupplierName.Trim().Length > 100)
                 result.Errors.Add("Tên Nhà cung cấp vượt quá 100 ký tự.");
+
+            if (string.IsNullOrWhiteSpace(result.ImporterName))
+                result.Errors.Add("Chưa nhập tên Người nhập trong file Excel.");
+
+            if (result.ImporterName.Trim().Length > 100)
+                result.Errors.Add("Tên Người nhập vượt quá 100 ký tự.");
+
+            if (string.Equals(TextSearchHelper.ToSearchKey(result.ImporterName), "tu dong", StringComparison.OrdinalIgnoreCase))
+                result.Errors.Add("Ô Người nhập vẫn là 'Tự động'. Vui lòng tải lại file Excel mẫu mới và điền tên người nhập.");
 
             int headerRow = FindHeaderRow(sheet);
             if (headerRow <= 0)
@@ -253,7 +268,8 @@ namespace QuanLyDichVuKhachSan.Services
 
         private static void BuildReceiptSheet(XLWorkbook workbook, IXLWorksheet sheet,
             InventoryReceipt? receipt, IReadOnlyList<InventoryBatch>? lines,
-            IReadOnlyList<FoodItem> foodItems, IReadOnlyList<Supplier>? suppliers, bool isTemplate)
+            IReadOnlyList<FoodItem> foodItems, IReadOnlyList<Supplier>? suppliers, bool isTemplate,
+            string? defaultImporterName = null)
         {
             sheet.ShowGridLines = false;
 
@@ -266,41 +282,40 @@ namespace QuanLyDichVuKhachSan.Services
             titleRange.Style.Font.FontColor = XLColor.FromHtml("#0F172A");
             titleRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             titleRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            sheet.Row(1).Height = 30;
+            sheet.Row(1).Height = 32;
 
-            // Thông tin phiếu
-            SetLabel(sheet.Cell("A2"), "Nhà cung cấp:");
-            SetValueRange(sheet.Range("B2:D2"), isTemplate ? string.Empty : receipt?.Supplier ?? string.Empty, editable: isTemplate);
-            SetLabel(sheet.Cell("E2"), "Mã phiếu:");
-            SetValueRange(sheet.Range("F2:G2"), isTemplate ? "Tự động khi nhập" : receipt?.ReceiptCode ?? string.Empty, editable: false);
+            // Khối thông tin phiếu: lưới 3 dòng x 2 cặp, các ô giá trị rộng đều nhau.
+            // Nhãn A:B / F:G, ô giá trị C:E / H:J.
+            var inputKind = isTemplate ? InfoFieldKind.Input : InfoFieldKind.ReadOnly;
+            var autoKind = isTemplate ? InfoFieldKind.Auto : InfoFieldKind.ReadOnly;
 
-            SetLabel(sheet.Cell("A3"), "Ghi chú phiếu:");
-            SetValueRange(sheet.Range("B3:E3"), isTemplate ? string.Empty : receipt?.Note ?? string.Empty, editable: isTemplate);
-            SetLabel(sheet.Cell("F3"), "Ngày nhập:");
-            SetValueRange(sheet.Range("G3:J3"),
+            string templateImporter = defaultImporterName ?? string.Empty;
+            if (templateImporter.Length > 100)
+                templateImporter = templateImporter[..100];
+
+            BuildInfoRow(sheet, 2,
+                "Nhà cung cấp:", isTemplate ? string.Empty : receipt?.Supplier ?? string.Empty, inputKind,
+                "Mã phiếu:", isTemplate ? "Tự động khi nhập" : receipt?.ReceiptCode ?? string.Empty, autoKind);
+
+            BuildInfoRow(sheet, 3,
+                "Người nhập:",
+                isTemplate ? templateImporter : receipt?.ImportedBy ?? string.Empty,
+                inputKind,
+                "Ngày nhập:",
                 isTemplate ? "Tự động khi nhập" : receipt?.ImportDate.ToString("dd/MM/yyyy HH:mm") ?? string.Empty,
-                editable: false);
+                autoKind);
 
-            SetLabel(sheet.Cell("A4"), "Người nhập:");
-            SetValueRange(sheet.Range("B4:D4"),
-                isTemplate ? "Tự động" : receipt?.ImportedBy ?? string.Empty,
-                editable: false);
-            SetLabel(sheet.Cell("E4"), "Tổng tiền:");
-            SetValueRange(sheet.Range("F4:G4"),
-                isTemplate ? string.Empty : receipt?.TotalCostDisplay ?? string.Empty,
-                editable: false);
+            BuildInfoRow(sheet, 4,
+                "Ghi chú phiếu:", isTemplate ? string.Empty : receipt?.Note ?? string.Empty, inputKind,
+                "Tổng tiền:", isTemplate ? string.Empty : receipt?.TotalCostDisplay ?? string.Empty, autoKind,
+                rightAlignRightValue: true);
 
-            if (isTemplate)
-            {
-                var guideRange = sheet.Range("A6:J6");
-                guideRange.Merge();
-                guideRange.Value = "Điền tên nhà cung cấp, ghi chú phiếu và các dòng mặt hàng vào ô màu vàng. " +
-                                   "Cột Tên mặt hàng / ĐVT / Hệ số tự động tra cứu từ Mã mặt hàng.";
-                guideRange.Style.Font.Italic = true;
-                guideRange.Style.Font.FontColor = XLColor.FromHtml("#64748B");
-                guideRange.Style.Alignment.WrapText = true;
-                sheet.Row(6).Height = 30;
-            }
+            var infoRange = sheet.Range("A2:J4");
+            infoRange.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+            infoRange.Style.Border.OutsideBorderColor = XLColor.FromHtml("#64748B");
+
+            // Khoảng đệm trước bảng dữ liệu
+            sheet.Row(5).Height = 8;
 
             // Tiêu đề bảng
             string[] headers =
@@ -319,10 +334,9 @@ namespace QuanLyDichVuKhachSan.Services
                 cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                 cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
                 cell.Style.Alignment.WrapText = true;
-                cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
             }
 
-            sheet.Row(HeaderRow).Height = 34;
+            sheet.Row(HeaderRow).Height = 36;
 
             int dataEndRow = isTemplate
                 ? DataStartRow + TemplateRows - 1
@@ -337,16 +351,20 @@ namespace QuanLyDichVuKhachSan.Services
                 BuildExportRows(sheet, lines ?? Array.Empty<InventoryBatch>(), foodItems, dataEndRow);
             }
 
-            // Định dạng bảng
+            // Định dạng bảng: full viền cho mọi ô
             var tableRange = sheet.Range(HeaderRow, 1, dataEndRow, headers.Length);
-            tableRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            tableRange.Style.Border.InsideBorder = XLBorderStyleValues.Hair;
+            tableRange.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+            tableRange.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
+            tableRange.Style.Border.OutsideBorderColor = XLColor.FromHtml("#64748B");
+            tableRange.Style.Border.InsideBorderColor = XLColor.FromHtml("#CBD5E1");
             tableRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            sheet.Rows(DataStartRow, dataEndRow).Height = 20;
 
             sheet.Range(DataStartRow, 1, dataEndRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             sheet.Range(DataStartRow, 2, dataEndRow, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             sheet.Range(DataStartRow, 4, dataEndRow, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             sheet.Range(DataStartRow, 8, dataEndRow, 9).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            sheet.Range(DataStartRow, 7, dataEndRow, 7).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
             sheet.Range(DataStartRow, 6, dataEndRow, 6).Style.NumberFormat.Format = "0";
             sheet.Range(DataStartRow, 7, dataEndRow, 7).Style.NumberFormat.Format = "#,##0";
             sheet.Range(DataStartRow, 9, dataEndRow, 9).Style.NumberFormat.Format = "dd/mm/yyyy";
@@ -364,6 +382,25 @@ namespace QuanLyDichVuKhachSan.Services
             sheet.Column(10).Width = 26;
 
             sheet.SheetView.FreezeRows(HeaderRow);
+        }
+
+        /// <summary>
+        /// Vẽ một dòng của khối thông tin phiếu theo đúng lưới: nhãn A:B, giá trị C:E, nhãn F:G, giá trị H:J.
+        /// </summary>
+        private static void BuildInfoRow(IXLWorksheet sheet, int row,
+            string leftLabel, string leftValue, InfoFieldKind leftKind,
+            string rightLabel, string rightValue, InfoFieldKind rightKind,
+            bool rightAlignRightValue = false)
+        {
+            SetLabelCell(sheet.Range(row, 1, row, 2), leftLabel);
+            SetValueCell(sheet.Range(row, 3, row, 5), leftValue, leftKind);
+            SetLabelCell(sheet.Range(row, 6, row, 7), rightLabel);
+            SetValueCell(sheet.Range(row, 8, row, 10), rightValue, rightKind);
+
+            if (rightAlignRightValue)
+                sheet.Range(row, 8, row, 10).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+            sheet.Row(row).Height = 26;
         }
 
         private static void BuildTemplateRows(XLWorkbook workbook, IXLWorksheet sheet,
@@ -483,15 +520,16 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 "HƯỚNG DẪN NHẬP KHO BẰNG EXCEL",
                 "",
-                "1. Điền tên nhà cung cấp vào ô B2 của sheet PhieuNhapKho.",
-                "2. Điền ghi chú phiếu vào ô B3 (không bắt buộc).",
-                "3. Điền các dòng mặt hàng bắt đầu từ dòng 8.",
-                "4. Cột Mã mặt hàng có dropdown danh mục. Có thể gõ tên mặt hàng nếu không nhớ mã.",
-                "5. Cột Tên mặt hàng / ĐVT nhập / Hệ số quy đổi tự động tra cứu, không cần sửa.",
-                "6. Số lượng nhập phải là số nguyên lớn hơn 0. Đơn giá nhập phải >= 0.",
-                "7. Hạn sử dụng định dạng dd/MM/yyyy. Để trống nếu lô hàng không có HSD.",
-                "8. Mã phiếu, ngày nhập và người nhập do app tự sinh khi nhập kho.",
-                "9. Không đổi tên sheet PhieuNhapKho. Chỉ hỗ trợ file .xlsx.",
+                "1. Nhập tên nhà cung cấp vào ô C2 của sheet PhieuNhapKho.",
+                "2. Nhập tên người nhập vào ô C3 (đã điền sẵn tên người đang đăng nhập, có thể sửa lại).",
+                "3. Nhập ghi chú phiếu vào ô C4 (không bắt buộc).",
+                "4. Nhập các dòng mặt hàng bắt đầu từ dòng 7.",
+                "5. Cột Mã mặt hàng có dropdown danh mục. Có thể gõ tên mặt hàng nếu không nhớ mã.",
+                "6. Cột Tên mặt hàng / ĐVT nhập / Hệ số quy đổi tự động tra cứu, không cần sửa.",
+                "7. Số lượng nhập phải là số nguyên lớn hơn 0. Đơn giá nhập phải >= 0.",
+                "8. Hạn sử dụng định dạng dd/MM/yyyy. Để trống nếu lô hàng không có HSD.",
+                "9. Mã phiếu, ngày nhập và tổng tiền do app tự sinh/tính khi nhập kho.",
+                "10. Không đổi tên sheet PhieuNhapKho. Chỉ hỗ trợ file .xlsx.",
                 "",
                 "LƯU Ý: Nếu mã mặt hàng không có trong danh mục, dòng đó sẽ bị báo lỗi và toàn bộ file chưa được nhập."
             };
@@ -520,27 +558,37 @@ namespace QuanLyDichVuKhachSan.Services
 
         #region Helper đọc dữ liệu
 
-        private static void SetLabel(IXLCell cell, string text)
+        private static void SetLabelCell(IXLRange range, string text)
         {
-            cell.Value = text;
-            cell.Style.Font.Bold = true;
-            cell.Style.Font.FontColor = XLColor.FromHtml("#475569");
-            cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            range.Merge();
+            range.Value = text;
+            range.Style.Font.Bold = true;
+            range.Style.Font.FontColor = XLColor.FromHtml("#334155");
+            range.Style.Fill.BackgroundColor = XLColor.FromHtml("#E2E8F0");
+            range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            range.Style.Alignment.Indent = 1;
+            range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            range.Style.Border.OutsideBorderColor = XLColor.FromHtml("#94A3B8");
         }
 
-        private static void SetValueRange(IXLRange range, string value, bool editable)
+        private static void SetValueCell(IXLRange range, string value, InfoFieldKind kind)
         {
             range.Merge();
             range.Value = value;
             range.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            range.Style.Border.OutsideBorderColor = XLColor.FromHtml("#CBD5E1");
+            range.Style.Border.OutsideBorderColor = XLColor.FromHtml("#94A3B8");
             range.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            range.Style.Alignment.Indent = 1;
             range.Style.Alignment.WrapText = true;
 
-            if (editable)
-                range.Style.Fill.BackgroundColor = XLColor.FromHtml("#FFF7D6");
-            else
-                range.Style.Fill.BackgroundColor = XLColor.FromHtml("#F8FAFC");
+            range.Style.Fill.BackgroundColor = kind switch
+            {
+                InfoFieldKind.Input => XLColor.FromHtml("#FFF7D6"),
+                InfoFieldKind.Auto => XLColor.FromHtml("#F1F5F9"),
+                _ => XLColor.White
+            };
         }
 
         private static int FindHeaderRow(IXLWorksheet sheet)
@@ -598,8 +646,16 @@ namespace QuanLyDichVuKhachSan.Services
                             return inlineValue;
                     }
 
-                    // Giá trị nằm ở ô bên phải (ô đầu tiên sau nhãn).
+                    // Giá trị nằm ở ô bên phải (ô đầu tiên sau vùng nhãn, kể cả khi nhãn được merge).
                     int valueCol = col + 1;
+                    try
+                    {
+                        var labelCell = sheet.Cell(row, col);
+                        if (labelCell.IsMerged())
+                            valueCol = labelCell.MergedRange().LastColumn().ColumnNumber() + 1;
+                    }
+                    catch { }
+
                     if (valueCol <= 15)
                     {
                         string value = GetCellText(sheet.Cell(row, valueCol));

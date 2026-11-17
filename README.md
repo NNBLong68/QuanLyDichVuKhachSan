@@ -92,7 +92,7 @@ QuanLyDichVuKhachSan/
 - Quản lý thông tin nhà cung cấp thực phẩm/đồ uống (tự động tạo mới nhà cung cấp nếu chưa tồn tại khi nhập kho).
 - **Nhập kho bằng Excel (thay thế nhập tay):**
   - Bấm **📄 Tải Excel Mẫu** để tải file mẫu `.xlsx` với cột cố định (Mã mặt hàng, Số lượng nhập, Đơn giá nhập, Số lô, Hạn sử dụng...) kèm sheet `HuongDan` và danh mục mặt hàng gợi ý.
-  - Điền Nhà cung cấp, Ghi chú phiếu và các dòng hàng vào file mẫu, sau đó bấm **📥 Nhập Kho Từ Excel** để tải lên và nhập kho.
+  - Điền Nhà cung cấp, Người nhập, Ghi chú phiếu và các dòng hàng vào file mẫu, sau đó bấm **📥 Nhập Kho Từ Excel** để tải lên và nhập kho. Ô **Người nhập** đã điền sẵn tên người đang đăng nhập/trực ca nhưng vẫn có thể sửa tự do trước khi nhập.
   - File được kiểm tra toàn bộ trước khi nhập: nếu có bất kỳ dòng lỗi nào, toàn bộ file sẽ không được nhập và hiển thị danh sách lỗi cần sửa. Mã mặt hàng không tồn tại sẽ báo lỗi (không tự tạo mới). Hạn sử dụng để trống = không có hạn.
   - Mỗi phiếu nhập tự sinh mã `PN-yyyyMMdd-NN`; file Excel gốc được lưu trữ lại để tải về sau này.
 - **Card Lịch sử nhập kho:** Liệt kê các phiếu nhập (mã phiếu, ngày nhập, nhà cung cấp, người nhập, tổng tiền), hỗ trợ tìm kiếm và tải lại file Excel của từng phiếu (kể cả các phiếu cũ chưa có file lưu trữ — hệ thống tự xuất lại từ CSDL).

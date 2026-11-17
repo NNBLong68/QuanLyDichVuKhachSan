@@ -241,6 +241,7 @@ CREATE TABLE PhieuNhapKho (
     MaPhieuNhap     NVARCHAR(50)  NOT NULL UNIQUE,
     NhaCungCapId    INT           NOT NULL FOREIGN KEY REFERENCES NhaCungCap(Id),
     NguoiNhapId     INT           NOT NULL FOREIGN KEY REFERENCES NhanVien(Id),
+    TenNguoiNhap    NVARCHAR(100) NULL,
     NgayNhap        DATETIME      NOT NULL DEFAULT GETDATE(),
     TongTien        DECIMAL(18,2) NOT NULL DEFAULT 0 CHECK (TongTien >= 0),
     GhiChu          NVARCHAR(255) NULL,

@@ -499,13 +499,13 @@ namespace QuanLyDichVuKhachSan.ViewModels
             try
             {
                 var foods = Data.FoodItems.ToList();
-                InventoryExcelService.CreateTemplate(dialog.FileName, foods);
+                InventoryExcelService.CreateTemplate(dialog.FileName, foods, Data.GetCurrentDutyStaffName());
 
                 MessageBox.Show(
                     $"✅ Đã tạo file Excel mẫu nhập kho!\n\n" +
                     $"• Đường dẫn: {dialog.FileName}\n" +
                     $"• Danh mục hiện có: {foods.Count} mặt hàng\n\n" +
-                    $"Mở file, điền Nhà cung cấp + các dòng mặt hàng rồi dùng nút '📥 Nhập Kho Từ Excel' để nhập kho.",
+                    $"Mở file, điền Nhà cung cấp, Người nhập và các dòng mặt hàng rồi dùng nút '📥 Nhập Kho Từ Excel' để nhập kho.",
                     "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
@@ -559,6 +559,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             var confirm = MessageBox.Show(
                 $"XÁC NHẬN NHẬP KHO TỪ EXCEL?\n\n" +
                 $"• Nhà cung cấp: {importResult.SupplierName}\n" +
+                $"• Người nhập: {importResult.ImporterName}\n" +
                 $"• Số mặt hàng: {importResult.Lines.Count} dòng\n" +
                 $"• Tổng tiền nhập: {importResult.TotalCost:N0} đ\n" +
                 (string.IsNullOrWhiteSpace(importResult.ReceiptNote) ? "" : $"• Ghi chú: {importResult.ReceiptNote}\n") +
@@ -569,8 +570,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             try
             {
-                int staffId = Data.GetCurrentDutyStaffId();
-                if (staffId <= 0) staffId = 1;
+                int staffId = ResolveImporterStaffId(importResult.ImporterName);
 
                 var supplier = await DatabaseService.Instance.GetOrCreateSupplierAsync(importResult.SupplierName);
                 if (supplier.Id <= 0)
@@ -582,7 +582,8 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
                 string receiptCode = GenerateUniqueReceiptCode();
                 var saveResult = await DatabaseService.Instance.LapPhieuNhapKhoAsync(
-                    receiptCode, supplier.Id, staffId, importResult.ReceiptNote, importResult.Lines);
+                    receiptCode, supplier.Id, staffId, importResult.ReceiptNote, importResult.Lines,
+                    importResult.ImporterName);
 
                 if (!saveResult.Success)
                 {
@@ -591,7 +592,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     return;
                 }
 
-                string importedBy = Auth.CurrentUser?.FullName ?? "Admin";
+                string importedBy = importResult.ImporterName;
                 DateTime importTime = DateTime.Now;
                 var newBatches = new List<InventoryBatch>();
 
@@ -661,6 +662,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     $"✅ ĐÃ NHẬP KHO THÀNH CÔNG!\n\n" +
                     $"• Mã phiếu: {saveResult.ReceiptCode}\n" +
                     $"• Nhà cung cấp: {supplier.Name}\n" +
+                    $"• Người nhập: {importResult.ImporterName}\n" +
                     $"• Số mặt hàng: {importResult.Lines.Count} dòng\n" +
                     $"• Tổng tiền nhập: {importResult.TotalCost:N0} đ\n\n" +
                     "File Excel đã được lưu vào lịch sử nhập kho để tải lại khi cần.",
@@ -674,6 +676,31 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 MessageBox.Show($"Có lỗi xảy ra trong quá trình nhập kho!\n\n{ex.Message}",
                     "Thông báo", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        /// <summary>
+        /// Tìm nhân viên khớp với tên Người nhập trong file Excel (không phân biệt hoa/thường, dấu).
+        /// Nếu tên tự do không khớp nhân viên nào, dùng nhân viên đang đăng nhập/trực ca để giữ khóa ngoại hợp lệ;
+        /// tên hiển thị trên phiếu vẫn lấy đúng tên người dùng đã điền trong file.
+        /// </summary>
+        private int ResolveImporterStaffId(string importerName)
+        {
+            string key = TextSearchHelper.ToSearchKey(importerName);
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                var matched = Data.StaffList.FirstOrDefault(x =>
+                    !string.IsNullOrWhiteSpace(x.FullName) &&
+                    string.Equals(TextSearchHelper.ToSearchKey(x.FullName), key, StringComparison.OrdinalIgnoreCase));
+
+                if (matched != null && matched.Id > 0)
+                    return matched.Id;
+            }
+
+            int fallbackId = Auth.CurrentUser?.StaffId ?? 0;
+            if (fallbackId <= 0)
+                fallbackId = Data.GetCurrentDutyStaffId();
+
+            return fallbackId > 0 ? fallbackId : 1;
         }
 
         private async Task DownloadReceiptExcelAsync(object? parameter)
