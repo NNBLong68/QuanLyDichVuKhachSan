@@ -2344,7 +2344,7 @@ namespace QuanLyDichVuKhachSan.Services
                 .ToList();
         }
 
-        public (bool Success, List<RoomServiceUsageItem> PaidItems, decimal RoomCost, decimal ServicesCost, decimal TotalAmount) PayRoomServices(string roomNumber, bool includeRoomCharge, string? invoiceCode = null)
+        public (bool Success, List<RoomServiceUsageItem> PaidItems, decimal RoomCost, decimal ServicesCost, decimal TotalAmount) PayRoomServices(string roomNumber, bool includeRoomCharge = false, string? invoiceCode = null)
         {
             string norm = NormalizeRoomNumber(roomNumber);
             if (string.IsNullOrEmpty(norm)) return (false, new List<RoomServiceUsageItem>(), 0, 0, 0);
@@ -2355,11 +2355,17 @@ namespace QuanLyDichVuKhachSan.Services
 
             var room = HotelRooms.FirstOrDefault(x => string.Equals(NormalizeRoomNumber(x.RoomNumber), norm, StringComparison.OrdinalIgnoreCase));
             decimal servicesCost = unpaidList.Sum(x => x.Amount);
-            decimal roomCost = includeRoomCharge ? (room?.StayNights ?? 1) * (room?.PricePerNight ?? 0) : 0;
-            decimal grandTotal = roomCost + servicesCost;
+            decimal roomCost = 0; // Tuyệt đối không tính tiền phòng vào doanh thu dịch vụ
+            decimal grandTotal = servicesCost;
             int staffId = GetCurrentDutyStaffId();
             string staffName = GetCurrentActorName();
             DateTime payTime = DateTime.Now;
+
+            // Nếu không có khoản dịch vụ nào chưa thanh toán -> hoàn tất không cần gọi DB
+            if (unpaidList.Count == 0)
+            {
+                return (true, unpaidList, 0, 0, 0);
+            }
 
             // Chỉ ghi nhận thanh toán khi SQL Server xác nhận thành công.
             if (!DatabaseService.Instance.ConfirmRoomPayment(norm, staffId))
@@ -2447,7 +2453,7 @@ namespace QuanLyDichVuKhachSan.Services
                     new SqlParameter("@Ma", parking.TicketCode));
             }
 
-            if (unpaidList.Count > 0 || includeRoomCharge)
+            if (unpaidList.Count > 0)
             {
                 var newInv = new RoomInvoice
                 {
@@ -2461,7 +2467,7 @@ namespace QuanLyDichVuKhachSan.Services
                     CheckOutDate = room?.ExpectedCheckOutDate ?? payTime,
                     StayNights = room?.StayNights ?? 1,
                     PricePerNight = room?.PricePerNight ?? 0,
-                    RoomCost = roomCost,
+                    RoomCost = 0,
                     ServicesCost = servicesCost,
                     TotalAmount = grandTotal,
                     IssuedBy = staffName,

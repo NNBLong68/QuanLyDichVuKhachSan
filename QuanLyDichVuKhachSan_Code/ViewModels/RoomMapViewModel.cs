@@ -362,26 +362,42 @@ namespace QuanLyDichVuKhachSan.ViewModels
                         return;
                     }
 
-                    // Luôn lập hóa đơn quyết toán (tiền phòng + dịch vụ) trước khi trả phòng.
                     SelectedRoom = room;
                     LoadServicesForSelectedRoom();
                     NotifyAllStateChanges();
 
-                    if (!PayAndExportBill(true))
-                        return;
+                    var unpaidItems = CurrentRoomServices.Where(x => !x.IsPaid).ToList();
+                    if (unpaidItems.Count > 0)
+                    {
+                        // Nếu có dịch vụ chưa thanh toán -> mở hóa đơn quyết toán dịch vụ (tuyệt đối không tính tiền phòng)
+                        if (!PayAndExportBill(false))
+                            return;
+                    }
+                    else
+                    {
+                        // Không có dịch vụ nào chưa thanh toán -> xác nhận trả phòng trực tiếp
+                        var confirmResult = MessageBox.Show(
+                            $"Phòng {room.RoomNumber} (Khách: {room.CustomerName}) không có khoản dịch vụ nào chưa thanh toán.\n\nBạn có chắc chắn muốn làm thủ tục trả phòng và chuyển sang trạng thái 'Đang dọn'?",
+                            "Xác nhận trả phòng",
+                            MessageBoxButton.YesNo,
+                            MessageBoxImage.Question);
+
+                        if (confirmResult != MessageBoxResult.Yes)
+                            return;
+                    }
 
                     // Tự động xuất bến xe trong bãi của khách phòng này
                     Data.AutoCheckOutParkingVehiclesForRoom(room.RoomNumber);
                     room.ParkedVehicleInfo = "";
 
-                    // Thanh toán thành công -> trả phòng và chuyển sang dọn dẹp
+                    // Trả phòng thành công -> chuyển sang dọn dẹp
                     room.Status = RoomStatus.Cleaning;
                     room.CustomerName = "";
                     room.PhoneNumber = "";
                     room.IdentityCard = "";
                     room.CheckInDate = null;
                     room.ExpectedCheckOutDate = null;
-                    room.Note = "Khách đã trả phòng & quyết toán xong - Chờ dọn phòng";
+                    room.Note = "Khách đã trả phòng - Chờ dọn phòng";
                     SelectedRoom = room;
                     ApplyFilter();
                     LoadServicesForSelectedRoom();
@@ -615,7 +631,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             OnPropertyChanged(nameof(HasUnpaidServices));
         }
 
-        private bool PayAndExportBill(bool includeRoomCharge)
+        private bool PayAndExportBill(bool includeRoomCharge = false)
         {
             if (SelectedRoom == null)
             {
@@ -625,9 +641,8 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             var unpaidItems = CurrentRoomServices.Where(x => !x.IsPaid).ToList();
             decimal unpaidServicesCost = unpaidItems.Sum(x => x.Amount);
-            decimal roomCost = includeRoomCharge ? SelectedRoom.TotalRoomCost : 0;
 
-            if (!includeRoomCharge && unpaidItems.Count == 0)
+            if (unpaidItems.Count == 0)
             {
                 MessageBox.Show($"Phòng {SelectedRoom.RoomNumber} hiện không có khoản dịch vụ nào chưa thanh toán!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 return false;
@@ -645,9 +660,9 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 CheckOutDate = SelectedRoom.ExpectedCheckOutDate ?? DateTime.Now,
                 StayNights = SelectedRoom.StayNights,
                 PricePerNight = SelectedRoom.PricePerNight,
-                RoomCost = roomCost,
+                RoomCost = 0, // Không tính tiền phòng vào hóa đơn dịch vụ
                 ServicesCost = unpaidServicesCost,
-                TotalAmount = roomCost + unpaidServicesCost,
+                TotalAmount = unpaidServicesCost,
                 IssuedBy = Data.GetCurrentActorName(),
                 PaidBy = Data.GetCurrentActorName(),
                 PaidItems = unpaidItems
@@ -658,7 +673,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
 
             if (dialogResult == true || billWindow.IsConfirmed)
             {
-                var payResult = Data.PayRoomServices(SelectedRoom.RoomNumber, includeRoomCharge, invoice.InvoiceCode);
+                var payResult = Data.PayRoomServices(SelectedRoom.RoomNumber, false, invoice.InvoiceCode);
                 if (!payResult.Success)
                 {
                     MessageBox.Show("Không thể xác nhận thanh toán với SQL Server. Vui lòng kiểm tra kết nối và thử lại!", "Lỗi thanh toán", MessageBoxButton.OK, MessageBoxImage.Error);

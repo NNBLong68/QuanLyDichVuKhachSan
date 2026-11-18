@@ -97,7 +97,10 @@ namespace QuanLyDichVuKhachSan.Services
             sb.AppendLine($"SĐT / CCCD   : {invoice.PhoneNumber} / {invoice.IdentityCard}");
             sb.AppendLine($"Thu ngân     : {invoice.IssuedBy}");
             sb.AppendLine("-------------------------------------------------");
-            sb.AppendLine($"Tiền phòng   : {invoice.StayNights} đêm x {invoice.PricePerNight:N0} đ = {invoice.RoomCost:N0} VNĐ");
+            if (invoice.RoomCost > 0)
+            {
+                sb.AppendLine($"Tiền phòng   : {invoice.StayNights} đêm x {invoice.PricePerNight:N0} đ = {invoice.RoomCost:N0} VNĐ");
+            }
             sb.AppendLine($"Tiền dịch vụ : {invoice.ServicesCost:N0} VNĐ");
             sb.AppendLine("-------------------------------------------------");
             sb.AppendLine($"TỔNG CỘNG THANH TOÁN: {invoice.TotalAmount:N0} VNĐ");
