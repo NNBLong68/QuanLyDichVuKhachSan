@@ -461,8 +461,6 @@ namespace QuanLyDichVuKhachSan.Models
         }
     }
 
-<<<<<<< HEAD
-=======
     /// <summary>
     /// Kết quả cập nhật tồn kho / giá vốn của một mặt hàng sau khi hủy lô.
     /// </summary>
@@ -518,7 +516,6 @@ namespace QuanLyDichVuKhachSan.Models
         public bool Success => ReceiptId > 0;
     }
 
->>>>>>> 4a59f903d49ccfce77d9059959e168ad043d027f
     public class WarehouseReceiptDraftItem : INotifyPropertyChanged
     {
         public int FoodItemId { get; set; }
@@ -1814,7 +1811,7 @@ namespace QuanLyDichVuKhachSan.Models
 
         public string ServiceBadgeBg => ServiceCategory switch
         {
-            "Tiền phòng & Dịch vụ" => "#DBEAFE",
+            "Tiền phòng" or "Tiền phòng & Dịch vụ" => "#DBEAFE",
             "Ăn uống" or "Ẩm thực & Ăn uống" => "#FEF3C7",
             "Sảnh & Sự kiện" => "#FCE7F3",
             "Thuê xe máy" => "#E0E7FF",
@@ -1825,7 +1822,7 @@ namespace QuanLyDichVuKhachSan.Models
 
         public string ServiceBadgeFg => ServiceCategory switch
         {
-            "Tiền phòng & Dịch vụ" => "#1D4ED8",
+            "Tiền phòng" or "Tiền phòng & Dịch vụ" => "#1D4ED8",
             "Ăn uống" or "Ẩm thực & Ăn uống" => "#B45309",
             "Sảnh & Sự kiện" => "#BE185D",
             "Thuê xe máy" => "#4338CA",

@@ -59,18 +59,22 @@
                     </Grid>
                 </Border>
 
-                <!-- TAB 1: TỔNG QUAN KHU VỰC + LỊCH SỬ ĐƠN ĐẶT -->
+                <!-- TAB 1: TỔNG QUAN KHU VỰC + LỊCH SỬ ĐƠN ĐẶT (Chia 2 phần trên dưới linh hoạt với GridSplitter) -->
                 <Grid Grid.Row="1" Visibility="{Binding IsOverviewTab, Converter={StaticResource BoolToVis}}">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="10"/>
-                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="1*" MinHeight="140"/>
+                        <RowDefinition Height="12"/>
+                        <RowDefinition Height="1.2*" MinHeight="160"/>
                     </Grid.RowDefinitions>
 
                     <!-- Danh sách sảnh / phòng sự kiện -->
                     <Border Grid.Row="0" Style="{StaticResource CardPanel}" Padding="12">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,8">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Margin="0,0,0,8">
                                 <TextBlock Text="🏢 DANH SÁCH KHU VỰC SỰ KIỆN" FontSize="13.5" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
                                 <Button Content="➕ Thêm Khu Vực" HorizontalAlignment="Right"
                                         Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVis}}"
@@ -84,51 +88,73 @@
                                     </Button.Resources>
                                 </Button>
                             </Grid>
-                            <ItemsControl ItemsSource="{Binding Data.EventSpaces}" helpers:TabProgressiveRender.IsDataRegion="True">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,6"
-                                                Cursor="Hand" 
-                                                ContextMenuOpening="Border_ContextMenuOpening"
-                                                ToolTip="Click để chọn sảnh. Click chuột phải để Chỉnh sửa thông tin sảnh (Admin)">
-                                            <Border.ContextMenu>
-                                                <ContextMenu>
-                                                    <MenuItem Header="✏️ Chỉnh sửa" 
-                                                              FontWeight="Bold" Foreground="#0284C7"
-                                                              Click="MenuItem_EditSpace_Click"/>
-                                                </ContextMenu>
-                                            </Border.ContextMenu>
-                                            <Border.InputBindings>
-                                                <MouseBinding MouseAction="LeftClick" 
-                                                              Command="{Binding DataContext.SelectSpaceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                              CommandParameter="{Binding}"/>
-                                            </Border.InputBindings>
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="34"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Data.EventSpaces}" helpers:TabProgressiveRender.IsDataRegion="True">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,6,6"
+                                                    Cursor="Hand" 
+                                                    ContextMenuOpening="Border_ContextMenuOpening"
+                                                    ToolTip="Click để chọn sảnh. Click chuột phải để Chỉnh sửa thông tin sảnh (Admin)">
+                                                <Border.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Header="✏️ Chỉnh sửa" 
+                                                                  FontWeight="Bold" Foreground="#0284C7"
+                                                                  Click="MenuItem_EditSpace_Click"/>
+                                                    </ContextMenu>
+                                                </Border.ContextMenu>
+                                                <Border.InputBindings>
+                                                    <MouseBinding MouseAction="LeftClick" 
+                                                                  Command="{Binding DataContext.SelectSpaceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  CommandParameter="{Binding}"/>
+                                                </Border.InputBindings>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="34"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
 
-                                                <TextBlock Grid.Column="0" Text="{Binding DisplayIcon}" FontSize="20" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="6,0,0,0">
-                                                    <Grid>
-                                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="12.5" Foreground="#1E293B"/>
-                                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                                            <TextBlock Text="{Binding HourlyRate, Converter={StaticResource CurrencyConv}, StringFormat='{}Giá thuê: {0}/giờ'}" FontSize="11" FontWeight="Bold" Foreground="#D97706"/>
-                                                        </StackPanel>
-                                                    </Grid>
-                                                    <Grid Margin="0,2,0,0">
-                                                        <TextBlock Text="{Binding Equipments}" FontSize="10.5" Foreground="#64748B" TextTrimming="CharacterEllipsis"/>
-                                                        <TextBlock Text="{Binding Capacity, StringFormat='{}Sức chứa: {0} người'}" FontSize="10.5" FontWeight="SemiBold" Foreground="#0284C7" HorizontalAlignment="Right"/>
-                                                    </Grid>
-                                                </StackPanel>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
+                                                    <TextBlock Grid.Column="0" Text="{Binding DisplayIcon}" FontSize="20" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="6,0,0,0">
+                                                        <Grid>
+                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="12.5" Foreground="#1E293B"/>
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                                <TextBlock Text="{Binding HourlyRate, Converter={StaticResource CurrencyConv}, StringFormat='{}Giá thuê: {0}/giờ'}" FontSize="11" FontWeight="Bold" Foreground="#D97706"/>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                        <Grid Margin="0,2,0,0">
+                                                            <TextBlock Text="{Binding Equipments}" FontSize="10.5" Foreground="#64748B" TextTrimming="CharacterEllipsis"/>
+                                                            <TextBlock Text="{Binding Capacity, StringFormat='{}Sức chứa: {0} người'}" FontSize="10.5" FontWeight="SemiBold" Foreground="#0284C7" HorizontalAlignment="Right"/>
+                                                        </Grid>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
                     </Border>
+
+                    <!-- Thanh kéo giãn linh hoạt giữa Khu vực sự kiện và Lịch sử đơn đặt sảnh -->
+                    <GridSplitter Grid.Row="1" Height="12" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                  ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                                  Background="Transparent" Cursor="SizeNS">
+                        <GridSplitter.Template>
+                            <ControlTemplate TargetType="GridSplitter">
+                                <Border Background="Transparent" Height="12" VerticalAlignment="Center" Cursor="SizeNS">
+                                    <Border x:Name="Handle" Height="4" CornerRadius="2" Background="#CBD5E1" HorizontalAlignment="Center" Width="64"
+                                            ToolTip="Kéo lên/xuống để thay đổi độ cao giữa 2 khung"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Handle" Property="Background" Value="#3B82F6"/>
+                                        <Setter TargetName="Handle" Property="Height" Value="5"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </GridSplitter.Template>
+                    </GridSplitter>
 
                     <!-- Lịch sử các đơn đặt sảnh -->
                     <Border Grid.Row="2" Style="{StaticResource CardPanel}" Padding="12">

@@ -14,6 +14,7 @@ namespace QuanLyDichVuKhachSan.Models
         public string PhoneNumber { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public bool IsActive { get; set; } = true;
+        public int? StaffId { get; set; }
 
         public string RoleDisplayName => Role == UserRole.Admin ? "Admin" : "Lễ Tân";
         public bool CanBeLocked => Role != UserRole.Admin;
@@ -60,6 +61,12 @@ namespace QuanLyDichVuKhachSan.Models
 
         private string _status = "Đang làm việc";
         public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
+
+        private string _username = string.Empty;
+        public string Username { get => _username; set { _username = value; OnPropertyChanged(); } }
+
+        private string _password = string.Empty;
+        public string Password { get => _password; set { _password = value; OnPropertyChanged(); } }
     }
 
     public class Shift
