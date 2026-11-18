@@ -131,6 +131,43 @@ namespace QuanLyDichVuKhachSan.Models
             }
         }
 
+        // Hạn sử dụng theo từng lô nhập kho (hiển thị trong danh mục kho hàng).
+        public ObservableCollection<FoodItemExpiryLine> ExpiryLines { get; } = new();
+        public bool HasExpiryLines => ExpiryLines.Count > 0;
+
+        private bool _hasBatchHistory;
+        public bool HasBatchHistory
+        {
+            get => _hasBatchHistory;
+            private set
+            {
+                if (_hasBatchHistory == value) return;
+                _hasBatchHistory = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasBatchHistory)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ExpiryFallbackText)));
+            }
+        }
+
+        /// <summary>
+        /// Chữ thay thế khi không còn lô nào còn hàng: phân biệt mặt hàng đã bán hết
+        /// với mặt hàng chưa từng nhập kho.
+        /// </summary>
+        public string ExpiryFallbackText =>
+            HasBatchHistory && StockQuantity <= 0 ? "Đã bán hết" : "Chưa nhập kho";
+
+        public void SetExpiryLines(IEnumerable<FoodItemExpiryLine> lines, bool hasBatchHistory)
+        {
+            ExpiryLines.Clear();
+            foreach (var line in lines)
+                ExpiryLines.Add(line);
+
+            HasBatchHistory = hasBatchHistory;
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ExpiryLines)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasExpiryLines)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ExpiryFallbackText)));
+        }
+
         public string ImageUrl { get; set; } = string.Empty;
         private string _status = "Đang phục vụ";
         public string Status
@@ -273,11 +310,17 @@ namespace QuanLyDichVuKhachSan.Models
             return "📦";
         }
 
-        // Thùng rác: Soft-delete
+        // Thùng rác: Soft-delete, tự động xóa vĩnh viễn sau 30 ngày kể từ ngày xóa.
+        public const int TrashRetentionDays = 30;
+
         public DateTime? TrashedDate { get; set; }
         public bool IsTrashed => TrashedDate.HasValue;
-        public string TrashedDateDisplay => TrashedDate.HasValue 
-            ? $"Xóa lúc: {TrashedDate.Value:dd/MM/yyyy HH:mm} • Hết hạn khôi phục: {TrashedDate.Value.AddMonths(3):dd/MM/yyyy}" 
+        public DateTime? TrashExpiryDate => TrashedDate?.AddDays(TrashRetentionDays);
+        public int TrashDaysRemaining => TrashedDate.HasValue
+            ? Math.Max(0, (int)Math.Ceiling((TrashedDate.Value.AddDays(TrashRetentionDays) - DateTime.Now).TotalDays))
+            : 0;
+        public string TrashedDateDisplay => TrashedDate.HasValue
+            ? $"Xóa lúc: {TrashedDate.Value:dd/MM/yyyy HH:mm} • Còn {TrashDaysRemaining} ngày • Tự động xóa: {TrashExpiryDate:dd/MM/yyyy}"
             : "";
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -295,10 +338,68 @@ namespace QuanLyDichVuKhachSan.Models
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DefaultConversionRate)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ProfitMargin)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ProfitPercentage)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ExpiryFallbackText)));
         }
     }
 
-    public class InventoryBatch
+    /// <summary>
+    /// Một dòng hạn sử dụng theo lô hiển thị trong danh mục kho hàng.
+    /// </summary>
+    public class FoodItemExpiryLine
+    {
+        public int BatchId { get; set; }
+        public string BatchNumber { get; set; } = string.Empty;
+        public DateTime? ExpiryDate { get; set; }
+        public int RemainingQuantity { get; set; }   // Số đơn vị lẻ còn lại của lô sau khi trừ hàng đã bán
+        public int ImportedQuantity { get; set; }    // Tổng số đơn vị lẻ đã nhập của lô
+        public string RetailUnit { get; set; } = string.Empty;
+
+        public string ExpiryDisplay => ExpiryDate.HasValue ? ExpiryDate.Value.ToString("dd/MM/yyyy") : "Không HSD";
+        public bool IsExpired => ExpiryDate.HasValue && ExpiryDate.Value.Date < DateTime.Today;
+        public bool IsNearExpiry => ExpiryDate.HasValue && !IsExpired && ExpiryDate.Value.Date <= DateTime.Today.AddDays(7);
+
+        public string StatusDisplay
+        {
+            get
+            {
+                if (!ExpiryDate.HasValue) return "Không HSD";
+                int days = (int)(ExpiryDate.Value.Date - DateTime.Today).TotalDays;
+                if (days < 0) return $"Hết hạn {-days} ngày";
+                if (days == 0) return "Hết hạn hôm nay";
+                return $"Còn {days} ngày";
+            }
+        }
+
+        public string DisplayText
+        {
+            get
+            {
+                string batch = string.IsNullOrWhiteSpace(BatchNumber) ? "Lô ?" : $"Lô {BatchNumber}";
+                string quantity = RemainingQuantity > 0
+                    ? RemainingQuantity < ImportedQuantity
+                        ? $" • Còn {RemainingQuantity}/{ImportedQuantity} {RetailUnit}".TrimEnd()
+                        : $" • Còn {RemainingQuantity} {RetailUnit}".TrimEnd()
+                    : string.Empty;
+                return $"{batch}: {ExpiryDisplay} ({StatusDisplay}){quantity}";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dữ liệu một mặt hàng mới khai báo trong sheet MatHangMoi của file Excel nhập kho.
+    /// </summary>
+    public class NewFoodItemDraft
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Category { get; set; } = "Đồ ăn";
+        public string RetailUnit { get; set; } = "Cái";
+        public decimal Price { get; set; }
+        public string DefaultImportUnit { get; set; } = "Thùng";
+        public int DefaultConversionRate { get; set; } = 24;
+        public int LowStockThreshold { get; set; } = 10;
+    }
+
+    public class InventoryBatch : INotifyPropertyChanged
     {
         public int Id { get; set; }
         public int ReceiptId { get; set; }
@@ -319,6 +420,29 @@ namespace QuanLyDichVuKhachSan.Models
         public string Supplier { get; set; } = string.Empty;
         public string Note { get; set; } = string.Empty;
 
+        // Trạng thái chọn trên giao diện (dùng cho cột tick ở tab cận hạn và form hủy lô).
+        private bool _isSelected;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set
+            {
+                if (_isSelected == value) return;
+                _isSelected = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+            }
+        }
+
+        // Thông tin hủy lô (lưu bền vững trong CSDL).
+        public bool IsCancelled { get; set; }
+        public DateTime? CancelledDate { get; set; }
+        public string CancelReason { get; set; } = string.Empty;
+        public string CancelledBy { get; set; } = string.Empty;
+        public string CancelNote { get; set; } = string.Empty;
+        public string CancelledDateDisplay => CancelledDate?.ToString("dd/MM/yyyy HH:mm") ?? string.Empty;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
         public string CalculationSummary => $"{Quantity} {ImportUnit} x {ConversionRate} = {TotalRetailUnits} {RetailUnit}";
         public string ExpiryDisplay => ExpiryDate.HasValue ? ExpiryDate.Value.ToString("dd/MM/yyyy") : "---";
         public bool IsExpired => ExpiryDate.HasValue && ExpiryDate.Value.Date < DateTime.Today;
@@ -335,6 +459,28 @@ namespace QuanLyDichVuKhachSan.Models
                 return $"Còn {days} ngày";
             }
         }
+    }
+
+    /// <summary>
+    /// Kết quả cập nhật tồn kho / giá vốn của một mặt hàng sau khi hủy lô.
+    /// </summary>
+    public class BatchCancelFoodUpdate
+    {
+        public int FoodItemId { get; set; }
+        public int NewStockQuantity { get; set; }
+        public decimal NewAverageCost { get; set; }
+        public string NewStatus { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Kết quả hủy một hoặc nhiều lô hàng.
+    /// </summary>
+    public class BatchCancelResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public List<int> CancelledBatchIds { get; set; } = new();
+        public List<BatchCancelFoodUpdate> FoodUpdates { get; set; } = new();
     }
 
     /// <summary>
@@ -373,6 +519,7 @@ namespace QuanLyDichVuKhachSan.Models
     public class WarehouseReceiptDraftItem : INotifyPropertyChanged
     {
         public int FoodItemId { get; set; }
+        public int NewItemIndex { get; set; } = -1; // >= 0: dòng đang tham chiếu mặt hàng mới trong sheet MatHangMoi
         public string FoodItemName { get; set; } = string.Empty;
         public string RetailUnit { get; set; } = "Cái";
         public string ImportUnit { get; set; } = "Thùng";

@@ -639,7 +639,7 @@
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="80"/>
+                                                        <ColumnDefinition Width="96"/>
                                                         <ColumnDefinition Width="28"/>
                                                     </Grid.ColumnDefinitions>
 
@@ -671,13 +671,22 @@
                                                                     IsEnabled="{Binding CanDecrease}"
                                                                     Command="{Binding DataContext.DecreaseCartItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                     CommandParameter="{Binding}"/>
-                                                            <TextBlock Text="{Binding Quantity}"
-                                                                       Width="22"
-                                                                       TextAlignment="Center"
-                                                                       VerticalAlignment="Center"
-                                                                       FontSize="11.5"
-                                                                       FontWeight="Bold"
-                                                                       Foreground="#0F172A"/>
+                                                            <TextBox Text="{Binding Quantity, Mode=OneWay}"
+                                                                     Width="34"
+                                                                     Height="24"
+                                                                     TextAlignment="Center"
+                                                                     VerticalContentAlignment="Center"
+                                                                     VerticalAlignment="Center"
+                                                                     BorderThickness="0"
+                                                                     Background="Transparent"
+                                                                     FontSize="11.5"
+                                                                     FontWeight="Bold"
+                                                                     Foreground="#0F172A"
+                                                                     ToolTip="Nhập số lượng trực tiếp"
+                                                                     PreviewTextInput="CartQuantity_PreviewTextInput"
+                                                                     PreviewKeyDown="CartQuantity_PreviewKeyDown"
+                                                                     GotFocus="CartQuantity_GotFocus"
+                                                                     LostFocus="CartQuantity_LostFocus"/>
                                                             <Button Content="+"
                                                                     Style="{StaticResource StepButton}"
                                                                     Command="{Binding DataContext.IncreaseCartItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"

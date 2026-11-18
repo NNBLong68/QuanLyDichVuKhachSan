@@ -50,7 +50,11 @@ QuanLyDichVuKhachSan/
 ├── QuanLyDichVuKhachSan_App/           # Thư mục chứa bản phát hành (Production Binary)
 │   ├── QuanLyDichVuKhachSan.exe        # File thực thi chạy ứng dụng chính
 │   ├── appsettings.json                # File cấu hình chuỗi kết nối Database
-│   └── Chay_Ung_Dung.bat               # Script chạy nhanh ứng dụng
+│   └── Chay_Ung_Dung.bat               # Launcher kiểm tra file chạy và mở ứng dụng
+│
+├── publish/                            # Bản đóng gói tham khảo, cùng phiên bản với App
+│
+├── Chay_Phan_Mem.bat                   # Mở bản đã publish sẵn (ưu tiên App, sau đó Release/Debug)
 │
 ├── QuanLyDichVuKhachSan_Code/          # Thư mục mã nguồn dự án (Visual Studio Solution)
 │   ├── Database/                       # Kịch bản SQL khởi tạo CSDL hoàn chỉnh
@@ -95,7 +99,8 @@ QuanLyDichVuKhachSan/
   - Điền Nhà cung cấp, Người nhập, Ghi chú phiếu và các dòng hàng vào file mẫu, sau đó bấm **📥 Nhập Kho Từ Excel** để tải lên và nhập kho. Ô **Người nhập** đã điền sẵn tên người đang đăng nhập/trực ca nhưng vẫn có thể sửa tự do trước khi nhập.
   - File được kiểm tra toàn bộ trước khi nhập: nếu có bất kỳ dòng lỗi nào, toàn bộ file sẽ không được nhập và hiển thị danh sách lỗi cần sửa. Mã mặt hàng không tồn tại sẽ báo lỗi (không tự tạo mới). Hạn sử dụng để trống = không có hạn.
   - Mỗi phiếu nhập tự sinh mã `PN-yyyyMMdd-NN`; file Excel gốc được lưu trữ lại để tải về sau này.
-- **Card Lịch sử nhập kho:** Liệt kê các phiếu nhập (mã phiếu, ngày nhập, nhà cung cấp, người nhập, tổng tiền), hỗ trợ tìm kiếm và tải lại file Excel của từng phiếu (kể cả các phiếu cũ chưa có file lưu trữ — hệ thống tự xuất lại từ CSDL).
+- **Card Nhập / Hủy kho:** Liệt kê các phiếu nhập (mã phiếu, ngày nhập, nhà cung cấp, người nhập, tổng tiền) kèm bảng các lô đã hủy (ngày hủy, người hủy, lý do, ghi chú); hỗ trợ tìm kiếm và tải lại file Excel của từng phiếu (kể cả các phiếu cũ chưa có file lưu trữ — hệ thống tự xuất lại từ CSDL).
+- **Hủy lô hàng:** Từ menu chuột phải trong tab Kho hàng hoặc tick chọn ở tab **Lô cận hạn sử dụng** rồi bấm **🚫 Hủy Lô Đã Chọn**. Form hủy cho phép chọn từng lô hoặc chọn tất cả, chọn lý do (Hết hạn / Hư hỏng / Mất mát / Khác), nhập ghi chú và cảnh báo nếu số lượng hủy vượt tồn kho. Khi xác nhận, hệ thống đánh dấu lô đã hủy, trừ tồn kho theo đơn vị lẻ, tính lại giá vốn bình quân và lưu lại lịch sử để đối soát.
 - Tự động cập nhật số lượng tồn thực tế và giá vốn bình quân qua Trigger `trg_ChiTietPhieuNhapKho_CongTonKho`.
 - Cảnh báo mặt hàng sắp hết tồn kho theo ngưỡng tối thiểu định trước.
 - Báo cáo phân tích giá trị tồn kho và lợi nhuận gộp từng mặt hàng.
@@ -260,6 +265,7 @@ erDiagram
 ### 8.1. Yêu cầu môi trường
 - Hệ điều hành: Windows 10 / Windows 11 (64-bit).
 - Nền tảng: [.NET 10.0 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) (Windows x64).
+- Để build từ mã nguồn cần cài thêm **.NET 10.0 SDK**; máy chỉ chạy bản phát hành thì chỉ cần Desktop Runtime.
 - Cơ sở dữ liệu: `Microsoft SQL Server 2016` trở lên hoặc `SQL Server LocalDB`.
 
 ### 8.2. Khởi tạo Cơ sở dữ liệu (Database Setup)
@@ -271,7 +277,7 @@ Khởi động **SQL Server Management Studio (SSMS)** hoặc công cụ SQL tư
 5. `5_Data.sql` — Nạp dữ liệu mẫu ban đầu (nhân sự, phòng, món ăn, xe máy, sảnh, đối tác, lịch sử mẫu).
 
 ### 8.3. Cấu hình chuỗi kết nối
-Mở file `appsettings.json` tại thư mục mã nguồn hoặc thư mục phát hành (`QuanLyDichVuKhachSan_App`), cập nhật lại chuỗi kết nối tới SQL Server của bạn:
+Ứng dụng đọc file `appsettings.json` đặt ngay cạnh file chạy. Bản phát hành đã có sẵn file này tại `QuanLyDichVuKhachSan_App\appsettings.json`; mở file và cập nhật chuỗi kết nối tới SQL Server của bạn:
 ```json
 {
   "ConnectionStrings": {
@@ -279,19 +285,27 @@ Mở file `appsettings.json` tại thư mục mã nguồn hoặc thư mục phá
   }
 }
 ```
+Khi người cập nhật publish lại ứng dụng, file `appsettings.json` và `remember.dat` trong thư mục App vẫn được giữ nguyên, không bị ghi đè.
 
-### 8.4. Biên dịch & Đóng gói ứng dụng
-Mở terminal tại thư mục gốc của giải pháp và thực hiện:
+### 8.4. Biên dịch, đóng gói & cập nhật ứng dụng
+Việc publish là của **người cập nhật mã nguồn**, thực hiện sau mỗi lần sửa code để thư mục `QuanLyDichVuKhachSan_App` luôn là bản mới nhất. Tại thư mục gốc, chạy:
+
 ```powershell
-# Biên dịch mã nguồn chế độ Release
-dotnet build "QuanLyDichVuKhachSan_Code\QuanLyDichVuKhachSan.sln" -c Release
+dotnet publish "QuanLyDichVuKhachSan_Code\QuanLyDichVuKhachSan.csproj" -c Release -o "$env:TEMP\QuanLyDichVuKhachSan_publish"
 
-# Đóng gói ra thư mục triển khai
-dotnet publish "QuanLyDichVuKhachSan_Code\QuanLyDichVuKhachSan.csproj" -c Release -o "QuanLyDichVuKhachSan_App"
+robocopy "$env:TEMP\QuanLyDichVuKhachSan_publish" "QuanLyDichVuKhachSan_App" /E /XF appsettings.json remember.dat
+robocopy "$env:TEMP\QuanLyDichVuKhachSan_publish" "publish" /E /XF appsettings.json remember.dat
 ```
 
+- Publish ra thư mục tạm rồi mới đồng bộ, để không làm hỏng bản đang chạy nếu build lỗi giữa chừng.
+- Giữ nguyên `appsettings.json` và `remember.dat` trong thư mục App (chuỗi kết nối và thông tin đăng nhập đã lưu).
+- Người dùng cuối chỉ nhận thư mục `QuanLyDichVuKhachSan_App` (hoặc bản đóng gói), không cần .NET SDK và không phải build.
+
 ### 8.5. Khởi chạy phần mềm
-- Nhấp đúp trực tiếp vào file: `QuanLyDichVuKhachSan_App\QuanLyDichVuKhachSan.exe` hoặc file `Chay_Phan_Mem.bat`.
+- Nhấp đúp `Chay_Phan_Mem.bat` tại thư mục gốc: mở ngay bản đã publish trong `QuanLyDichVuKhachSan_App`; nếu chưa có thì dùng `bin\Release`, rồi `bin\Debug`.
+- File chạy không build và không cần .NET SDK, nên ứng dụng mở trong khoảng 1 giây.
+- Hoặc chạy trực tiếp `QuanLyDichVuKhachSan_App\Chay_Ung_Dung.bat` / `QuanLyDichVuKhachSan_App\QuanLyDichVuKhachSan.exe`.
+- Các launcher đều kiểm tra file `.exe` tồn tại, đặt đúng thư mục làm việc và báo lỗi rõ ràng nếu thiếu bản phát hành.
 
 ---
 

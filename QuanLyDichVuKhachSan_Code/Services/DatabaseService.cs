@@ -581,7 +581,9 @@ namespace QuanLyDichVuKhachSan.Services
                     IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MonAn' AND COLUMN_NAME = 'DonViNhapMacDinh')
                         ALTER TABLE MonAn ADD DonViNhapMacDinh NVARCHAR(50) NULL DEFAULT N'Thùng';
                     IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MonAn' AND COLUMN_NAME = 'HeSoQuyDoiMacDinh')
-                        ALTER TABLE MonAn ADD HeSoQuyDoiMacDinh INT NULL DEFAULT 24;";
+                        ALTER TABLE MonAn ADD HeSoQuyDoiMacDinh INT NULL DEFAULT 24;
+                    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MonAn' AND COLUMN_NAME = 'NgayXoa')
+                        ALTER TABLE MonAn ADD NgayXoa DATETIME NULL;";
                 using var cmd = new SqlCommand(ddl, conn);
                 cmd.ExecuteNonQuery();
                 _monAnColumnsChecked = true;
@@ -780,64 +782,94 @@ namespace QuanLyDichVuKhachSan.Services
         public List<FoodItem> LoadFoodItemsFromDb()
         {
             var list = new List<FoodItem>();
+            var legacyTrashedIds = new List<int>();
             try
             {
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
                 EnsureMonAnColumnsExist(conn);
                 string query = "SELECT * FROM MonAn ORDER BY Id";
-                using var cmd = new SqlCommand(query, conn);
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
+                using (var cmd = new SqlCommand(query, conn))
+                using (var reader = cmd.ExecuteReader())
                 {
-                    string foodName = SafeGetString(reader, "TenMon", "Name");
-                    string rawImg = SafeGetString(reader, "HinhAnh", "ImageUrl");
-                    string resolvedImg = FoodItem.GetDefaultIcon(foodName);
-                    if (!string.IsNullOrWhiteSpace(rawImg) && !rawImg.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) && !rawImg.EndsWith(".png", StringComparison.OrdinalIgnoreCase) && rawImg.Length <= 4)
+                    while (reader.Read())
                     {
-                        resolvedImg = rawImg;
+                        int foodId = SafeGetInt(reader, "Id");
+                        string foodName = SafeGetString(reader, "TenMon", "Name");
+                        string rawImg = SafeGetString(reader, "HinhAnh", "ImageUrl");
+                        string resolvedImg = FoodItem.GetDefaultIcon(foodName);
+                        if (!string.IsNullOrWhiteSpace(rawImg) && !rawImg.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) && !rawImg.EndsWith(".png", StringComparison.OrdinalIgnoreCase) && rawImg.Length <= 4)
+                        {
+                            resolvedImg = rawImg;
+                        }
+
+                        int defaultConversion = SafeGetInt(reader, "HeSoQuyDoiMacDinh");
+                        if (defaultConversion <= 0) defaultConversion = 24;
+
+                        string defaultUnit = SafeGetString(reader, "DonViNhapMacDinh");
+                        if (string.IsNullOrWhiteSpace(defaultUnit)) defaultUnit = "Thùng";
+
+                        string retailUnit = SafeGetString(reader, "DonViTinh", "DonViBanLe");
+                        if (string.IsNullOrWhiteSpace(retailUnit)) retailUnit = "Cái";
+
+                        int lowStock = SafeGetInt(reader, "MucTonToiThieu", "NguongCanhBaoTon");
+                        if (lowStock <= 0) lowStock = 10;
+
+                        string category = SafeGetString(reader, "DanhMuc", "LoaiMon", "Category");
+                        if (string.IsNullOrWhiteSpace(category))
+                        {
+                            category = (foodName.ToLower().Contains("lavie") || foodName.ToLower().Contains("coca") || foodName.ToLower().Contains("pepsi") || foodName.ToLower().Contains("nước") || foodName.ToLower().Contains("cà phê") || foodName.ToLower().Contains("trà") || foodName.ToLower().Contains("rượu")) ? "Thức uống" : "Đồ ăn";
+                        }
+
+                        string status = SafeGetString(reader, "TrangThai", "Status");
+                        if (string.IsNullOrWhiteSpace(status) || status == "Còn hàng") status = "Đang phục vụ";
+
+                        bool isDeleted = status == "Đã xóa";
+                        DateTime? trashedDate = null;
+                        if (isDeleted)
+                        {
+                            trashedDate = SafeGetNullableDateTime(reader, "NgayXoa");
+                            if (!trashedDate.HasValue)
+                            {
+                                // Dữ liệu xóa trước khi có cột NgayXoa: bắt đầu đếm 30 ngày từ lần nạp này
+                                // và ghi lại mốc thời gian để không bị reset ở các lần mở app sau.
+                                trashedDate = DateTime.Now;
+                                legacyTrashedIds.Add(foodId);
+                            }
+                        }
+
+                        list.Add(new FoodItem
+                        {
+                            Id = foodId,
+                            Name = foodName,
+                            Category = category,
+                            Price = SafeGetDecimal(reader, "GiaBan", "DonGia", "Price"),
+                            RetailUnit = retailUnit,
+                            DefaultImportUnit = defaultUnit,
+                            DefaultConversionRate = defaultConversion,
+                            AverageCostPrice = SafeGetDecimal(reader, "GiaVonBinhQuan"),
+                            StockQuantity = SafeGetInt(reader, "SoLuongTonKho"),
+                            LowStockThreshold = lowStock,
+                            ImageUrl = resolvedImg,
+                            Status = isDeleted ? "Ngừng kinh doanh" : status,
+                            TrashedDate = trashedDate
+                        });
                     }
+                }
 
-                    int defaultConversion = SafeGetInt(reader, "HeSoQuyDoiMacDinh");
-                    if (defaultConversion <= 0) defaultConversion = 24;
-
-                    string defaultUnit = SafeGetString(reader, "DonViNhapMacDinh");
-                    if (string.IsNullOrWhiteSpace(defaultUnit)) defaultUnit = "Thùng";
-
-                    string retailUnit = SafeGetString(reader, "DonViTinh", "DonViBanLe");
-                    if (string.IsNullOrWhiteSpace(retailUnit)) retailUnit = "Cái";
-
-                    int lowStock = SafeGetInt(reader, "MucTonToiThieu", "NguongCanhBaoTon");
-                    if (lowStock <= 0) lowStock = 10;
-
-                    string category = SafeGetString(reader, "DanhMuc", "LoaiMon", "Category");
-                    if (string.IsNullOrWhiteSpace(category))
+                if (legacyTrashedIds.Count > 0)
+                {
+                    try
                     {
-                        category = (foodName.ToLower().Contains("lavie") || foodName.ToLower().Contains("coca") || foodName.ToLower().Contains("pepsi") || foodName.ToLower().Contains("nước") || foodName.ToLower().Contains("cà phê") || foodName.ToLower().Contains("trà") || foodName.ToLower().Contains("rượu")) ? "Thức uống" : "Đồ ăn";
+                        string idList = string.Join(",", legacyTrashedIds);
+                        using var updateCmd = new SqlCommand(
+                            $"UPDATE MonAn SET NgayXoa = GETDATE() WHERE Id IN ({idList}) AND NgayXoa IS NULL", conn);
+                        updateCmd.ExecuteNonQuery();
                     }
-
-                    string status = SafeGetString(reader, "TrangThai", "Status");
-                    if (string.IsNullOrWhiteSpace(status) || status == "Còn hàng") status = "Đang phục vụ";
-
-                    bool isDeleted = status == "Đã xóa";
-                    DateTime? trashedDate = isDeleted ? DateTime.Now : null;
-
-                    list.Add(new FoodItem
+                    catch (Exception updateEx)
                     {
-                        Id = SafeGetInt(reader, "Id"),
-                        Name = foodName,
-                        Category = category,
-                        Price = SafeGetDecimal(reader, "GiaBan", "DonGia", "Price"),
-                        RetailUnit = retailUnit,
-                        DefaultImportUnit = defaultUnit,
-                        DefaultConversionRate = defaultConversion,
-                        AverageCostPrice = SafeGetDecimal(reader, "GiaVonBinhQuan"),
-                        StockQuantity = SafeGetInt(reader, "SoLuongTonKho"),
-                        LowStockThreshold = lowStock,
-                        ImageUrl = resolvedImg,
-                        Status = isDeleted ? "Ngừng kinh doanh" : status,
-                        TrashedDate = trashedDate
-                    });
+                        System.Diagnostics.Debug.WriteLine($"[SQL Error] Update legacy NgayXoa: {updateEx.Message}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -866,6 +898,39 @@ namespace QuanLyDichVuKhachSan.Services
                     using var cmd = new SqlCommand(ddl, conn);
                     cmd.ExecuteNonQuery();
                     _phieuNhapKhoColumnsChecked = true;
+                }
+                catch { }
+            }
+        }
+
+        private static bool _chiTietPhieuNhapKhoColumnsChecked = false;
+        private static readonly object _chiTietPhieuNhapKhoColumnsLock = new();
+        private static void EnsureChiTietPhieuNhapKhoColumnsExist(SqlConnection conn)
+        {
+            if (_chiTietPhieuNhapKhoColumnsChecked) return;
+
+            lock (_chiTietPhieuNhapKhoColumnsLock)
+            {
+                if (_chiTietPhieuNhapKhoColumnsChecked) return;
+                try
+                {
+                    using (var setCmd = new SqlCommand("SET QUOTED_IDENTIFIER ON;", conn))
+                        setCmd.ExecuteNonQuery();
+
+                    string ddl = @"
+                        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ChiTietPhieuNhapKho' AND COLUMN_NAME = 'DaHuy')
+                            ALTER TABLE ChiTietPhieuNhapKho ADD DaHuy BIT NOT NULL CONSTRAINT DF_ChiTietPhieuNhapKho_DaHuy DEFAULT 0;
+                        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ChiTietPhieuNhapKho' AND COLUMN_NAME = 'NgayHuy')
+                            ALTER TABLE ChiTietPhieuNhapKho ADD NgayHuy DATETIME NULL;
+                        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ChiTietPhieuNhapKho' AND COLUMN_NAME = 'LyDoHuy')
+                            ALTER TABLE ChiTietPhieuNhapKho ADD LyDoHuy NVARCHAR(255) NULL;
+                        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ChiTietPhieuNhapKho' AND COLUMN_NAME = 'NguoiHuy')
+                            ALTER TABLE ChiTietPhieuNhapKho ADD NguoiHuy NVARCHAR(100) NULL;
+                        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'ChiTietPhieuNhapKho' AND COLUMN_NAME = 'GhiChuHuy')
+                            ALTER TABLE ChiTietPhieuNhapKho ADD GhiChuHuy NVARCHAR(255) NULL;";
+                    using var cmd = new SqlCommand(ddl, conn);
+                    cmd.ExecuteNonQuery();
+                    _chiTietPhieuNhapKhoColumnsChecked = true;
                 }
                 catch { }
             }
@@ -1192,6 +1257,7 @@ namespace QuanLyDichVuKhachSan.Services
                 using var conn = new SqlConnection(ConnectionString);
                 conn.Open();
                 EnsurePhieuNhapKhoColumnsExist(conn);
+                EnsureChiTietPhieuNhapKhoColumnsExist(conn);
                 string query = @"
                     SELECT 
                         ct.Id AS ChiTietId,
@@ -1214,6 +1280,7 @@ namespace QuanLyDichVuKhachSan.Services
                     JOIN NhaCungCap ncc ON ncc.Id = pn.NhaCungCapId
                     LEFT JOIN NhanVien nv ON nv.Id = pn.NguoiNhapId
                     LEFT JOIN MonAn m ON m.Id = ct.MonAnId
+                    WHERE ct.DaHuy = 0
                     ORDER BY pn.NgayNhap DESC, ct.Id DESC";
 
                 using var cmd = new SqlCommand(query, conn);
@@ -1256,6 +1323,219 @@ namespace QuanLyDichVuKhachSan.Services
                 System.Diagnostics.Debug.WriteLine($"[SQL Error] LoadInventoryBatchesFromDb: {ex.Message}");
             }
             return list;
+        }
+
+        /// <summary>
+        /// Đọc danh sách các lô đã hủy (kèm lý do, ngày hủy, người hủy) để hiển thị ở tab Nhập/Hủy.
+        /// </summary>
+        public List<InventoryBatch> LoadCancelledInventoryBatchesFromDb(List<FoodItem>? foodList = null)
+        {
+            var list = new List<InventoryBatch>();
+            try
+            {
+                using var conn = new SqlConnection(ConnectionString);
+                conn.Open();
+                EnsurePhieuNhapKhoColumnsExist(conn);
+                EnsureChiTietPhieuNhapKhoColumnsExist(conn);
+                string query = @"
+                    SELECT 
+                        ct.Id AS ChiTietId,
+                        pn.Id AS PhieuNhapId,
+                        pn.MaPhieuNhap,
+                        ct.MonAnId,
+                        m.TenMon,
+                        ct.DonViNhap,
+                        ct.HeSoQuyDoi,
+                        ct.SoLuongNhap,
+                        ct.DonGiaNhap,
+                        ct.SoLo,
+                        ct.HanSuDung,
+                        pn.NgayNhap,
+                        COALESCE(NULLIF(pn.TenNguoiNhap, N''), nv.HoTen, N'') AS TenNguoiNhap,
+                        ncc.TenNhaCungCap,
+                        ct.NgayHuy,
+                        ct.LyDoHuy,
+                        ct.NguoiHuy,
+                        ct.GhiChuHuy
+                    FROM ChiTietPhieuNhapKho ct
+                    JOIN PhieuNhapKho pn ON pn.Id = ct.PhieuNhapId
+                    JOIN NhaCungCap ncc ON ncc.Id = pn.NhaCungCapId
+                    LEFT JOIN NhanVien nv ON nv.Id = pn.NguoiNhapId
+                    LEFT JOIN MonAn m ON m.Id = ct.MonAnId
+                    WHERE ct.DaHuy = 1
+                    ORDER BY ct.NgayHuy DESC, ct.Id DESC";
+
+                using var cmd = new SqlCommand(query, conn);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    int foodId = SafeGetInt(reader, "MonAnId");
+                    string foodName = SafeGetString(reader, "TenMon");
+                    if (string.IsNullOrWhiteSpace(foodName) && foodList != null)
+                    {
+                        var f = foodList.FirstOrDefault(x => x.Id == foodId);
+                        if (f != null) foodName = f.Name;
+                    }
+
+                    int heSo = SafeGetInt(reader, "HeSoQuyDoi");
+                    if (heSo <= 0) heSo = 1;
+
+                    list.Add(new InventoryBatch
+                    {
+                        Id = SafeGetInt(reader, "ChiTietId"),
+                        ReceiptId = SafeGetInt(reader, "PhieuNhapId"),
+                        ReceiptCode = SafeGetString(reader, "MaPhieuNhap"),
+                        FoodItemId = foodId,
+                        FoodItemName = foodName,
+                        ImportUnit = SafeGetString(reader, "DonViNhap") != "" ? SafeGetString(reader, "DonViNhap") : "Thùng",
+                        ConversionRate = heSo,
+                        Quantity = SafeGetInt(reader, "SoLuongNhap"),
+                        ImportPrice = SafeGetDecimal(reader, "DonGiaNhap"),
+                        BatchNumber = SafeGetString(reader, "SoLo"),
+                        ExpiryDate = SafeGetNullableDateTime(reader, "HanSuDung"),
+                        ImportDate = SafeGetDateTime(reader, "NgayNhap"),
+                        ImportedBy = SafeGetString(reader, "TenNguoiNhap"),
+                        Supplier = SafeGetString(reader, "TenNhaCungCap"),
+                        IsCancelled = true,
+                        CancelledDate = SafeGetNullableDateTime(reader, "NgayHuy"),
+                        CancelReason = SafeGetString(reader, "LyDoHuy"),
+                        CancelledBy = SafeGetString(reader, "NguoiHuy"),
+                        CancelNote = SafeGetString(reader, "GhiChuHuy")
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SQL Error] LoadCancelledInventoryBatchesFromDb: {ex.Message}");
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Hủy một hoặc nhiều lô hàng: đánh dấu DaHuy, trừ tồn kho và tính lại giá vốn bình quân.
+        /// Toàn bộ thao tác chạy trong một transaction để tránh cập nhật dở dang.
+        /// </summary>
+        public async Task<BatchCancelResult> CancelInventoryBatchesAsync(
+            IReadOnlyList<int> batchIds, string reason, string note, string cancelledBy)
+        {
+            return await Task.Run(() =>
+            {
+                var result = new BatchCancelResult();
+                if (batchIds == null || batchIds.Count == 0)
+                {
+                    result.Message = "Chưa chọn lô nào để hủy.";
+                    return result;
+                }
+
+                try
+                {
+                    using var conn = new SqlConnection(ConnectionString);
+                    conn.Open();
+                    EnsureChiTietPhieuNhapKhoColumnsExist(conn);
+
+                    using var tx = conn.BeginTransaction();
+
+                    // 1. Lấy các dòng còn hiệu lực trong danh sách được chọn.
+                    var idParams = batchIds.Select((_, i) => "@Id" + i).ToArray();
+                    string inClause = string.Join(", ", idParams);
+                    var lines = new List<(int Id, int FoodItemId, int BaseQuantity)>();
+
+                    using (var selectCmd = new SqlCommand(
+                        $@"SELECT Id, MonAnId, SoLuongNhap * HeSoQuyDoi AS BaseQuantity
+                           FROM ChiTietPhieuNhapKho
+                           WHERE Id IN ({inClause}) AND DaHuy = 0", conn, tx))
+                    {
+                        for (int i = 0; i < batchIds.Count; i++)
+                            selectCmd.Parameters.AddWithValue(idParams[i], batchIds[i]);
+
+                        using var reader = selectCmd.ExecuteReader();
+                        while (reader.Read())
+                        {
+                            lines.Add((
+                                Convert.ToInt32(reader["Id"]),
+                                Convert.ToInt32(reader["MonAnId"]),
+                                Convert.ToInt32(reader["BaseQuantity"])));
+                        }
+                    }
+
+                    if (lines.Count == 0)
+                    {
+                        tx.Rollback();
+                        result.Message = "Các lô đã chọn không còn hiệu lực (có thể đã bị hủy trước đó).";
+                        return result;
+                    }
+
+                    // 2. Đánh dấu hủy từng dòng.
+                    foreach (var line in lines)
+                    {
+                        using var updateLineCmd = new SqlCommand(
+                            @"UPDATE ChiTietPhieuNhapKho
+                              SET DaHuy = 1, NgayHuy = GETDATE(), LyDoHuy = @Reason,
+                                  NguoiHuy = @By, GhiChuHuy = @Note
+                              WHERE Id = @Id AND DaHuy = 0", conn, tx);
+                        updateLineCmd.Parameters.AddWithValue("@Reason", string.IsNullOrWhiteSpace(reason) ? "Hủy lô" : reason.Trim());
+                        updateLineCmd.Parameters.AddWithValue("@By", string.IsNullOrWhiteSpace(cancelledBy) ? "Hệ thống" : cancelledBy.Trim());
+                        updateLineCmd.Parameters.AddWithValue("@Note", string.IsNullOrWhiteSpace(note) ? (object)DBNull.Value : note.Trim());
+                        updateLineCmd.Parameters.AddWithValue("@Id", line.Id);
+                        updateLineCmd.ExecuteNonQuery();
+                    }
+
+                    // 3. Trừ tồn kho & tính lại giá vốn bình quân theo các lô còn hiệu lực.
+                    foreach (var group in lines.GroupBy(x => x.FoodItemId))
+                    {
+                        int cancelledUnits = group.Sum(x => x.BaseQuantity);
+                        using var updateFoodCmd = new SqlCommand(@"
+                            UPDATE ma
+                            SET ma.SoLuongTonKho = CASE
+                                    WHEN ma.SoLuongTonKho - @Qty < 0 THEN 0
+                                    ELSE ma.SoLuongTonKho - @Qty
+                                END,
+                                ma.GiaVonBinhQuan = ISNULL((
+                                    SELECT CASE WHEN SUM(ct.SoLuongNhap * ct.HeSoQuyDoi) > 0
+                                                THEN SUM(ct.ThanhTien) / SUM(ct.SoLuongNhap * ct.HeSoQuyDoi)
+                                                ELSE NULL END
+                                    FROM ChiTietPhieuNhapKho ct
+                                    WHERE ct.MonAnId = ma.Id AND ct.DaHuy = 0
+                                ), ma.GiaVonBinhQuan),
+                                ma.TrangThai = CASE
+                                    WHEN ma.SoLuongTonKho - @Qty <= 0 AND ma.TrangThai IN (N'Còn hàng', N'Đang phục vụ') THEN N'Hết hàng'
+                                    ELSE ma.TrangThai
+                                END
+                            FROM MonAn ma
+                            WHERE ma.Id = @FoodId;
+
+                            SELECT SoLuongTonKho, GiaVonBinhQuan, TrangThai FROM MonAn WHERE Id = @FoodId;",
+                            conn, tx);
+                        updateFoodCmd.Parameters.AddWithValue("@Qty", cancelledUnits);
+                        updateFoodCmd.Parameters.AddWithValue("@FoodId", group.Key);
+
+                        using var reader = updateFoodCmd.ExecuteReader();
+                        if (reader.Read())
+                        {
+                            result.FoodUpdates.Add(new BatchCancelFoodUpdate
+                            {
+                                FoodItemId = group.Key,
+                                NewStockQuantity = Convert.ToInt32(reader["SoLuongTonKho"]),
+                                NewAverageCost = Convert.ToDecimal(reader["GiaVonBinhQuan"]),
+                                NewStatus = reader["TrangThai"]?.ToString() ?? string.Empty
+                            });
+                        }
+                    }
+
+                    tx.Commit();
+
+                    result.Success = true;
+                    result.Message = $"Đã hủy {lines.Count} lô hàng.";
+                    result.CancelledBatchIds = lines.Select(x => x.Id).ToList();
+                }
+                catch (Exception ex)
+                {
+                    result.Success = false;
+                    result.Message = ex.Message;
+                }
+
+                return result;
+            });
         }
 
         /// <summary>
@@ -2960,6 +3240,63 @@ namespace QuanLyDichVuKhachSan.Services
                 {
                     System.Diagnostics.Debug.WriteLine($"[AddNewFoodItemAsync Error] {ex.Message}");
                     return -1;
+                }
+            });
+        }
+
+        /// <summary>
+        /// Thêm nhiều mặt hàng mới trong cùng một transaction.
+        /// Trả về danh sách Id theo đúng thứ tự đầu vào. Nếu có lỗi, toàn bộ thay đổi được rollback.
+        /// </summary>
+        public async Task<(bool Success, List<int> Ids, string Error)> AddNewFoodItemsAsync(IReadOnlyList<FoodItem> items)
+        {
+            var ids = new List<int>();
+            if (items == null || items.Count == 0)
+                return (true, ids, string.Empty);
+
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    using var conn = new SqlConnection(ConnectionString);
+                    conn.Open();
+                    EnsureMonAnColumnsExist(conn);
+                    using var tran = conn.BeginTransaction();
+
+                    const string sql = @"
+                        INSERT INTO MonAn (TenMon, DanhMuc, GiaBan, DonViTinh, GiaVonBinhQuan, SoLuongTonKho, MucTonToiThieu, TrangThai, DonViNhapMacDinh, HeSoQuyDoiMacDinh)
+                        VALUES (@TenMon, @DanhMuc, @GiaBan, @DonViTinh, 0, 0, @MucTonToiThieu, @TrangThai, @DonViNhap, @HeSoQuyDoi);
+                        SELECT CAST(SCOPE_IDENTITY() AS INT);";
+
+                    foreach (var item in items)
+                    {
+                        using var cmd = new SqlCommand(sql, conn, tran);
+                        cmd.Parameters.AddWithValue("@TenMon", item.Name);
+                        cmd.Parameters.AddWithValue("@DanhMuc", string.IsNullOrWhiteSpace(item.Category) ? "Đồ ăn" : item.Category);
+                        cmd.Parameters.AddWithValue("@GiaBan", item.Price);
+                        cmd.Parameters.AddWithValue("@DonViTinh", string.IsNullOrWhiteSpace(item.RetailUnit) ? "Cái" : item.RetailUnit);
+                        cmd.Parameters.AddWithValue("@MucTonToiThieu", item.LowStockThreshold >= 0 ? item.LowStockThreshold : 10);
+                        cmd.Parameters.AddWithValue("@TrangThai", "Đang phục vụ");
+                        cmd.Parameters.AddWithValue("@DonViNhap", string.IsNullOrWhiteSpace(item.DefaultImportUnit) ? "Thùng" : item.DefaultImportUnit);
+                        cmd.Parameters.AddWithValue("@HeSoQuyDoi", item.DefaultConversionRate > 0 ? item.DefaultConversionRate : 24);
+
+                        var res = cmd.ExecuteScalar();
+                        if (res == null || res == DBNull.Value)
+                        {
+                            tran.Rollback();
+                            return (false, new List<int>(), $"Không thể thêm mặt hàng '{item.Name}' vào CSDL.");
+                        }
+
+                        ids.Add(Convert.ToInt32(res));
+                    }
+
+                    tran.Commit();
+                    return (true, ids, string.Empty);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[AddNewFoodItemsAsync Error] {ex.Message}");
+                    return (false, new List<int>(), ex.Message);
                 }
             });
         }

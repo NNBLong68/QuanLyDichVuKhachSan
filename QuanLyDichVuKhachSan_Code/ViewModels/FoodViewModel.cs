@@ -495,6 +495,32 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
         }
 
+        /// <summary>
+        /// Áp dụng số lượng người dùng nhập trực tiếp vào giỏ hàng.
+        /// Tự chuẩn hóa về tối thiểu 1 và không vượt quá tồn kho hiện tại.
+        /// </summary>
+        public void CommitCartItemQuantity(FoodOrderItem item, int requestedQuantity)
+        {
+            if (item == null) return;
+
+            var food = Data.FoodItems.FirstOrDefault(x => x.Id == item.FoodItemId);
+            int maxStock = food?.StockQuantity ?? int.MaxValue;
+
+            if (requestedQuantity < 1)
+                requestedQuantity = 1;
+
+            if (requestedQuantity > maxStock)
+            {
+                requestedQuantity = Math.Max(1, maxStock);
+                MessageBox.Show(
+                    $"Số lượng vượt quá tồn kho. Đã điều chỉnh về {requestedQuantity} {item.RetailUnit}.",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            item.Quantity = requestedQuantity;
+            RaiseCartSummaryChanged();
+        }
+
         private void RemoveFromCart(object? parameter)
         {
             if (parameter is FoodOrderItem item)
@@ -510,6 +536,27 @@ namespace QuanLyDichVuKhachSan.ViewModels
             {
                 MessageBox.Show("Vui lòng chọn ít nhất 1 mặt hàng vào giỏ hàng!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
+            }
+
+            // Kiểm tra lại số lượng trực tiếp trong giỏ trước khi tạo đơn.
+            foreach (var item in CurrentCartItems)
+            {
+                var stockFood = Data.FoodItems.FirstOrDefault(x => x.Id == item.FoodItemId);
+                if (stockFood == null || !stockFood.IsAvailable)
+                {
+                    MessageBox.Show(
+                        $"Mặt hàng [{item.FoodItemName}] hiện không còn sẵn sàng phục vụ. Vui lòng xóa khỏi giỏ.",
+                        "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (item.Quantity < 1 || item.Quantity > stockFood.StockQuantity)
+                {
+                    MessageBox.Show(
+                        $"Số lượng [{item.FoodItemName}] không hợp lệ. Tồn kho còn {stockFood.StockQuantity} {stockFood.RetailUnit}.",
+                        "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(OrderCustomerName) && OrderCustomerName.Any(char.IsDigit))
