@@ -218,7 +218,8 @@ CREATE TABLE MonAn (
     NhaCungCapId        INT           NULL FOREIGN KEY REFERENCES NhaCungCap(Id),
     GhiChu              NVARCHAR(255) NULL,
     DonViNhapMacDinh    NVARCHAR(50)  NULL DEFAULT N'Thùng',
-    HeSoQuyDoiMacDinh   INT           NULL DEFAULT 24
+    HeSoQuyDoiMacDinh   INT           NULL DEFAULT 24,
+    NgayXoa             DATETIME      NULL
 );
 GO
 
@@ -228,6 +229,7 @@ CREATE TABLE PhieuNhapKho (
     MaPhieuNhap     NVARCHAR(50)  NOT NULL UNIQUE,
     NhaCungCapId    INT           NOT NULL FOREIGN KEY REFERENCES NhaCungCap(Id),
     NguoiNhapId     INT           NOT NULL FOREIGN KEY REFERENCES NhanVien(Id),
+    TenNguoiNhap    NVARCHAR(100) NULL,
     NgayNhap        DATETIME      NOT NULL DEFAULT GETDATE(),
     TongTien        DECIMAL(18,2) NOT NULL DEFAULT 0 CHECK (TongTien >= 0),
     GhiChu          NVARCHAR(255) NULL
@@ -248,7 +250,12 @@ CREATE TABLE ChiTietPhieuNhapKho (
     GiaVonCoSo      AS (DonGiaNhap / HeSoQuyDoi) PERSISTED,
     SoLo            VARCHAR(50) NULL,
     HanSuDung       DATE NULL,
-    GhiChu          NVARCHAR(255) NULL
+    GhiChu          NVARCHAR(255) NULL,
+    DaHuy           BIT NOT NULL DEFAULT 0,
+    NgayHuy         DATETIME NULL,
+    LyDoHuy         NVARCHAR(255) NULL,
+    NguoiHuy        NVARCHAR(100) NULL,
+    GhiChuHuy       NVARCHAR(255) NULL
 );
 GO
 

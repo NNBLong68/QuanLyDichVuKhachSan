@@ -12,6 +12,10 @@ namespace QuanLyDichVuKhachSan.Views
         public InventoryManagementView()
         {
             InitializeComponent();
+
+            // Cho phép hàng tự giãn theo số dòng HSD của từng lô (mặc định style đang đặt 38px cố định).
+            CatalogDataGrid.RowHeight = double.NaN;
+
             DataContextChanged += OnDataContextChanged;
         }
 
@@ -92,6 +96,15 @@ namespace QuanLyDichVuKhachSan.Views
             if (item != null && DataContext is InventoryViewModel vm)
             {
                 vm.TrashFoodItemCommand.Execute(item);
+            }
+        }
+
+        private void MenuItem_CancelBatches_Click(object sender, RoutedEventArgs e)
+        {
+            var item = GetTargetFoodItem(sender);
+            if (item != null && DataContext is InventoryViewModel vm)
+            {
+                vm.OpenCancelBatchesForFood(item);
             }
         }
 

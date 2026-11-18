@@ -40,6 +40,10 @@ namespace QuanLyDichVuKhachSan.Services
         public ObservableCollection<FoodItem> TrashedFoodItems { get; } = new();
         public ObservableCollection<Supplier> Suppliers { get; } = new();
         public ObservableCollection<InventoryBatch> InventoryBatches { get; } = new();
+        public ObservableCollection<InventoryBatch> CancelledBatches { get; } = new();
+        // Các lô còn hàng sau khi phân bổ tồn kho theo FIFO (cập nhật trong RefreshFoodExpiryInfo).
+        public HashSet<int> RemainingBatchIds { get; } = new();
+        public bool HasRemainingStock(int batchId) => RemainingBatchIds.Contains(batchId);
         public ObservableCollection<FoodOrder> FoodOrders { get; } = new();
 
         // Dịch vụ Sự kiện
@@ -219,16 +223,18 @@ namespace QuanLyDichVuKhachSan.Services
             // 3. GIAI ĐOẠN 2: Nạp song song các bảng phụ thuộc
             var taskAssignments = Task.Run(() => DatabaseService.Instance.LoadShiftAssignmentsFromDb(dbStaff, dbShifts));
             var taskBatches = Task.Run(() => DatabaseService.Instance.LoadInventoryBatchesFromDb(dbFoods));
+            var taskCancelledBatches = Task.Run(() => DatabaseService.Instance.LoadCancelledInventoryBatchesFromDb(dbFoods));
             var taskFoodOrders = Task.Run(() => DatabaseService.Instance.LoadFoodOrdersFromDb(dbFoods, dbStaff));
             var taskEventBookings = Task.Run(() => DatabaseService.Instance.LoadEventBookingsFromDb(dbSpaces, dbStaff));
             var taskVehicleRentals = Task.Run(() => DatabaseService.Instance.LoadVehicleRentalsFromDb(dbVehicles, dbStaff));
             var taskParking = Task.Run(() => DatabaseService.Instance.LoadParkingRecordsFromDb(dbStaff));
             var taskLaundryOrders = Task.Run(() => DatabaseService.Instance.LoadLaundryOrdersFromDb(dbPartners, dbStaff));
 
-            Task.WaitAll(taskAssignments, taskBatches, taskFoodOrders, taskEventBookings, taskVehicleRentals, taskParking, taskLaundryOrders);
+            Task.WaitAll(taskAssignments, taskBatches, taskCancelledBatches, taskFoodOrders, taskEventBookings, taskVehicleRentals, taskParking, taskLaundryOrders);
 
             var dbAssignments = taskAssignments.Result;
             var dbBatches = taskBatches.Result;
+            var dbCancelledBatches = taskCancelledBatches.Result;
             var dbFoodOrders = taskFoodOrders.Result;
             var dbEventBookings = taskEventBookings.Result;
             var dbRentals = taskVehicleRentals.Result;
@@ -326,6 +332,15 @@ namespace QuanLyDichVuKhachSan.Services
             {
                 foreach (var b in dbBatches) InventoryBatches.Add(b);
             }
+
+            CancelledBatches.Clear();
+            if (dbCancelledBatches != null && dbCancelledBatches.Count > 0)
+            {
+                foreach (var b in dbCancelledBatches) CancelledBatches.Add(b);
+            }
+
+            RefreshFoodExpiryInfo();
+            RemoveExpiredTrashedItems();
 
             FoodOrders.Clear();
             if (dbFoodOrders != null && dbFoodOrders.Count > 0)
@@ -669,6 +684,126 @@ namespace QuanLyDichVuKhachSan.Services
         }
 
         public FoodItem? GetFoodItemById(int id) => _foodItemCache.TryGetValue(id, out var item) ? item : null;
+
+        /// <summary>
+        /// Tổng hợp HSD của tất cả lô nhập kho vào từng mặt hàng để hiển thị trong danh mục kho.
+        /// Chỉ hiển thị lô còn hàng: phân bổ tồn kho tổng theo FIFO (lô nhập trước bán trước),
+        /// nên hàng còn lại thuộc về các lô nhập sau nhất.
+        /// </summary>
+        public void RefreshFoodExpiryInfo()
+        {
+            var batchesByFood = InventoryBatches
+                .GroupBy(b => b.FoodItemId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            RemainingBatchIds.Clear();
+
+            foreach (var food in FoodItems.Concat(TrashedFoodItems))
+            {
+                if (!batchesByFood.TryGetValue(food.Id, out var batches))
+                {
+                    food.SetExpiryLines(Array.Empty<FoodItemExpiryLine>(), false);
+                    continue;
+                }
+
+                int remaining = Math.Max(0, food.StockQuantity);
+                var lines = new List<FoodItemExpiryLine>();
+
+                // FIFO: lô cũ bán trước, nên duyệt từ lô mới nhất về cũ nhất để phân bổ tồn còn lại.
+                foreach (var batch in batches
+                    .OrderByDescending(b => b.ImportDate)
+                    .ThenByDescending(b => b.Id))
+                {
+                    if (remaining <= 0) break;
+
+                    int allocated = Math.Min(batch.TotalRetailUnits, remaining);
+                    if (allocated <= 0) continue;
+
+                    remaining -= allocated;
+                    RemainingBatchIds.Add(batch.Id);
+                    lines.Add(new FoodItemExpiryLine
+                    {
+                        BatchId = batch.Id,
+                        BatchNumber = batch.BatchNumber,
+                        ExpiryDate = batch.ExpiryDate,
+                        RemainingQuantity = allocated,
+                        ImportedQuantity = batch.TotalRetailUnits,
+                        RetailUnit = batch.RetailUnit
+                    });
+                }
+
+                // Hiển thị theo hạn dùng gần nhất trước như trước đây.
+                lines.Sort((x, y) =>
+                {
+                    int byExpiry = (x.ExpiryDate ?? DateTime.MaxValue).CompareTo(y.ExpiryDate ?? DateTime.MaxValue);
+                    return byExpiry != 0 ? byExpiry : string.Compare(x.BatchNumber, y.BatchNumber, StringComparison.Ordinal);
+                });
+
+                food.SetExpiryLines(lines, true);
+            }
+        }
+
+        /// <summary>
+        /// Cập nhật bộ nhớ đệm sau khi hủy lô: chuyển lô sang danh sách đã hủy,
+        /// đồng bộ tồn kho/giá vốn của các mặt hàng liên quan.
+        /// </summary>
+        public void ApplyBatchCancellation(
+            IReadOnlyList<InventoryBatch> batches,
+            IReadOnlyList<BatchCancelFoodUpdate> foodUpdates,
+            string reason,
+            string note,
+            string cancelledBy)
+        {
+            var now = DateTime.Now;
+
+            foreach (var batch in batches)
+            {
+                batch.IsSelected = false;
+                batch.IsCancelled = true;
+                batch.CancelledDate = now;
+                batch.CancelReason = reason;
+                batch.CancelNote = note;
+                batch.CancelledBy = cancelledBy;
+
+                InventoryBatches.Remove(batch);
+                if (!CancelledBatches.Contains(batch))
+                    CancelledBatches.Insert(0, batch);
+            }
+
+            foreach (var update in foodUpdates)
+            {
+                if (!_foodItemCache.TryGetValue(update.FoodItemId, out var food)) continue;
+
+                food.StockQuantity = update.NewStockQuantity;
+                food.AverageCostPrice = update.NewAverageCost;
+                // Không gán lại Status tại đây: FoodItem quy đổi "Hết hàng" thành "Ngừng kinh doanh",
+                // trong khi mặt hàng chỉ tạm hết tồn và vẫn có thể nhập thêm sau.
+                food.NotifyStockChanged();
+            }
+
+            RefreshFoodExpiryInfo();
+        }
+
+        /// <summary>
+        /// Dọn các mặt hàng đã nằm trong thùng rác quá 30 ngày.
+        /// Mặt hàng đã phát sinh giao dịch chỉ được ẩn/lưu trữ để bảo toàn khóa ngoại.
+        /// </summary>
+        public void RemoveExpiredTrashedItems()
+        {
+            var expiredTrash = TrashedFoodItems
+                .Where(x => x.TrashedDate.HasValue &&
+                            x.TrashedDate.Value.AddDays(FoodItem.TrashRetentionDays) < DateTime.Now)
+                .ToList();
+
+            foreach (var expired in expiredTrash)
+            {
+                TrashedFoodItems.Remove(expired);
+                _ = DatabaseService.Instance.ExecuteNonQueryAsync(
+                    "IF NOT EXISTS (SELECT 1 FROM ChiTietDonHangMonAn WHERE MonAnId = @Id) AND NOT EXISTS (SELECT 1 FROM ChiTietPhieuNhapKho WHERE MonAnId = @Id) " +
+                    "DELETE FROM MonAn WHERE Id = @Id; ELSE UPDATE MonAn SET TrangThai = N'Đã xóa', NgayXoa = '1900-01-01' WHERE Id = @Id;",
+                    new SqlParameter("@Id", expired.Id));
+            }
+        }
         public Vehicle? GetVehicleById(int id) => _vehicleCache.TryGetValue(id, out var v) ? v : null;
         public EventSpace? GetEventSpaceById(int id) => _eventSpaceCache.TryGetValue(id, out var s) ? s : null;
         public LaundryPartner? GetLaundryPartnerById(int id) => _laundryPartnerCache.TryGetValue(id, out var p) ? p : null;
@@ -1355,6 +1490,8 @@ namespace QuanLyDichVuKhachSan.Services
 
                 _ = DatabaseService.Instance.ExecuteNonQueryAsync(syncSql, parameters.ToArray());
             }
+
+            RefreshFoodExpiryInfo();
         }
 
         public void AddEventBooking(EventBooking booking)
@@ -2203,16 +2340,22 @@ namespace QuanLyDichVuKhachSan.Services
                 // Giai đoạn 2: Nạp song song các bảng phụ thuộc
                 var taskAssignments = Task.Run(() => DatabaseService.Instance.LoadShiftAssignmentsFromDb(dbStaff, dbShifts));
                 var taskBatches = Task.Run(() => DatabaseService.Instance.LoadInventoryBatchesFromDb(dbFoods));
+                var taskCancelledBatches = Task.Run(() => DatabaseService.Instance.LoadCancelledInventoryBatchesFromDb(dbFoods));
                 var taskFoodOrders = Task.Run(() => DatabaseService.Instance.LoadFoodOrdersFromDb(dbFoods, dbStaff));
                 var taskEventBookings = Task.Run(() => DatabaseService.Instance.LoadEventBookingsFromDb(dbSpaces, dbStaff));
                 var taskVehicleRentals = Task.Run(() => DatabaseService.Instance.LoadVehicleRentalsFromDb(dbVehicles, dbStaff));
                 var taskParking = Task.Run(() => DatabaseService.Instance.LoadParkingRecordsFromDb(dbStaff));
                 var taskLaundry = Task.Run(() => DatabaseService.Instance.LoadLaundryOrdersFromDb(dbPartners, dbStaff));
 
+<<<<<<< HEAD
                 Task.WaitAll(taskAssignments, taskBatches, taskFoodOrders, taskEventBookings, taskVehicleRentals, taskParking, taskLaundry);
+=======
+                Task.WaitAll(taskAssignments, taskBatches, taskCancelledBatches, taskFoodOrders, taskEventBookings, taskVehicleRentals, taskParking, taskLaundry, taskInvoices);
+>>>>>>> 4a59f903d49ccfce77d9059959e168ad043d027f
 
                 var dbAssignments = taskAssignments.Result;
                 var dbBatches = taskBatches.Result;
+                var dbCancelledBatches = taskCancelledBatches.Result;
                 var dbFoodOrders = taskFoodOrders.Result;
                 var dbEventBookings = taskEventBookings.Result;
                 var dbRentals = taskVehicleRentals.Result;
@@ -2275,6 +2418,13 @@ namespace QuanLyDichVuKhachSan.Services
                         InventoryBatches.Clear();
                         foreach (var b in dbBatches) InventoryBatches.Add(b);
                     }
+                    if (dbCancelledBatches != null)
+                    {
+                        CancelledBatches.Clear();
+                        foreach (var b in dbCancelledBatches) CancelledBatches.Add(b);
+                    }
+                    RefreshFoodExpiryInfo();
+                    RemoveExpiredTrashedItems();
                     if (dbFoodOrders != null && dbFoodOrders.Count > 0)
                     {
                         FoodOrders.Clear();

@@ -31,12 +31,56 @@ namespace QuanLyDichVuKhachSan.ViewModels
             }
         }
 
-        public ObservableRangeCollection<FoodItem> FilteredFoodItems { get; } = new();
-        public ObservableRangeCollection<FoodItem> FilteredFoods { get; } = new();
-        public ObservableRangeCollection<FoodItem> FilteredDrinks { get; } = new();
+        // Bộ lọc danh mục dạng pill: Tất cả / Đồ ăn / Thức uống
+        private string _selectedFoodCategory = "Tất cả";
 
-        public int FoodCount => FilteredFoods.Count;
-        public int DrinkCount => FilteredDrinks.Count;
+        public bool IsAllFoodCategory
+        {
+            get => _selectedFoodCategory == "Tất cả";
+            set { if (value) SetFoodCategory("Tất cả"); }
+        }
+
+        public bool IsFoodOnlyCategory
+        {
+            get => _selectedFoodCategory == "Đồ ăn";
+            set { if (value) SetFoodCategory("Đồ ăn"); }
+        }
+
+        public bool IsDrinkOnlyCategory
+        {
+            get => _selectedFoodCategory == "Thức uống";
+            set { if (value) SetFoodCategory("Thức uống"); }
+        }
+
+        private void SetFoodCategory(string category)
+        {
+            if (_selectedFoodCategory == category) return;
+
+            _selectedFoodCategory = category;
+            OnPropertyChanged(nameof(IsAllFoodCategory));
+            OnPropertyChanged(nameof(IsFoodOnlyCategory));
+            OnPropertyChanged(nameof(IsDrinkOnlyCategory));
+            ApplyFoodFilter();
+        }
+
+        public ObservableRangeCollection<FoodItem> FilteredFoodOnlyItems { get; } = new();
+        public ObservableRangeCollection<FoodItem> FilteredDrinkOnlyItems { get; } = new();
+
+        public int AllFoodItemCount { get; private set; }
+        public int FoodOnlyItemCount { get; private set; }
+        public int DrinkOnlyItemCount { get; private set; }
+
+        public string AllCategoryDisplay => $"Tất cả · {AllFoodItemCount}";
+        public string FoodCategoryDisplay => $"Đồ ăn · {FoodOnlyItemCount}";
+        public string DrinkCategoryDisplay => $"Thức uống · {DrinkOnlyItemCount}";
+
+        public bool HasFoodResults => FilteredFoodOnlyItems.Count > 0;
+        public bool HasDrinkResults => FilteredDrinkOnlyItems.Count > 0;
+        public bool HasFilteredItems => HasFoodResults || HasDrinkResults;
+
+        // Số lượng món hiển thị theo từng nhóm (đã áp dụng tìm kiếm)
+        public string FoodGroupCountText => $"{FilteredFoodOnlyItems.Count} món";
+        public string DrinkGroupCountText => $"{FilteredDrinkOnlyItems.Count} món";
 
         // Quản lý Order mới (Lễ tân / Mini-bar)
         private string _orderCustomerName = "";
@@ -56,6 +100,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 {
                     AutoFillCustomerInfo(value);
                     OnPropertyChanged(nameof(CanChooseRoomBill));
+                    OnPropertyChanged(nameof(PaymentSummaryText));
                     if (!string.IsNullOrWhiteSpace(value))
                     {
                         OrderPaymentType = FoodPaymentType.RoomBill;
@@ -75,7 +120,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             string norm = DataService.NormalizeRoomNumber(roomNumber);
             if (!string.IsNullOrEmpty(norm))
             {
-                var room = Data.HotelRooms.FirstOrDefault(r => 
+                var room = Data.HotelRooms.FirstOrDefault(r =>
                     DataService.NormalizeRoomNumber(r.RoomNumber) == norm ||
                     string.Equals(r.RoomNumber, norm, StringComparison.OrdinalIgnoreCase));
                 if (room != null && !string.IsNullOrWhiteSpace(room.CustomerName))
@@ -102,11 +147,27 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 if (SetProperty(ref _orderPaymentType, value))
                 {
                     OnPropertyChanged(nameof(IsDirectPayment));
+                    OnPropertyChanged(nameof(IsRoomBill));
+                    OnPropertyChanged(nameof(IsCashPayment));
+                    OnPropertyChanged(nameof(IsBankTransferPayment));
+                    OnPropertyChanged(nameof(PaymentSummaryText));
                 }
             }
         }
 
         public bool IsDirectPayment => OrderPaymentType == FoodPaymentType.DirectPayment;
+
+        public bool IsRoomBill
+        {
+            get => OrderPaymentType == FoodPaymentType.ChargeToRoom;
+            set
+            {
+                if (value && CanChooseRoomBill)
+                {
+                    OrderPaymentType = FoodPaymentType.ChargeToRoom;
+                }
+            }
+        }
 
         private string _paymentMethod = "Tiền mặt";
         public string PaymentMethod
@@ -118,20 +179,35 @@ namespace QuanLyDichVuKhachSan.ViewModels
                 {
                     OnPropertyChanged(nameof(IsCashPayment));
                     OnPropertyChanged(nameof(IsBankTransferPayment));
+                    OnPropertyChanged(nameof(PaymentSummaryText));
                 }
             }
         }
 
         public bool IsCashPayment
         {
-            get => PaymentMethod == "Tiền mặt";
-            set { if (value) PaymentMethod = "Tiền mặt"; }
+            get => OrderPaymentType == FoodPaymentType.DirectPayment && PaymentMethod == "Tiền mặt";
+            set
+            {
+                if (value)
+                {
+                    OrderPaymentType = FoodPaymentType.DirectPayment;
+                    PaymentMethod = "Tiền mặt";
+                }
+            }
         }
 
         public bool IsBankTransferPayment
         {
-            get => PaymentMethod == "Chuyển khoản";
-            set { if (value) PaymentMethod = "Chuyển khoản"; }
+            get => OrderPaymentType == FoodPaymentType.DirectPayment && PaymentMethod == "Chuyển khoản";
+            set
+            {
+                if (value)
+                {
+                    OrderPaymentType = FoodPaymentType.DirectPayment;
+                    PaymentMethod = "Chuyển khoản";
+                }
+            }
         }
 
         private string _orderNote = "";
@@ -141,9 +217,48 @@ namespace QuanLyDichVuKhachSan.ViewModels
             set => SetProperty(ref _orderNote, value);
         }
 
+        private bool _isOrderNoteVisible = false;
+        public bool IsOrderNoteVisible
+        {
+            get => _isOrderNoteVisible;
+            set
+            {
+                if (SetProperty(ref _isOrderNoteVisible, value))
+                {
+                    OnPropertyChanged(nameof(OrderNoteToggleText));
+                }
+            }
+        }
+
+        public string OrderNoteToggleText => IsOrderNoteVisible
+            ? "− Ẩn ghi chú đơn hàng"
+            : "+ Thêm ghi chú đơn hàng";
+
         public ObservableCollection<FoodOrderItem> CurrentCartItems { get; } = new();
 
         public decimal CartTotal => CurrentCartItems.Sum(x => x.TotalPrice);
+        public int CartLineCount => CurrentCartItems.Sum(x => x.Quantity);
+        public int CartDistinctCount => CurrentCartItems.Count;
+        public string CartSummaryText => $"{CartLineCount} sản phẩm · {CartDistinctCount} mặt hàng";
+        public bool HasCartItems => CurrentCartItems.Count > 0;
+
+        public string PaymentSummaryText
+        {
+            get
+            {
+                if (OrderPaymentType == FoodPaymentType.ChargeToRoom)
+                {
+                    string room = DataService.NormalizeRoomNumber(OrderRoomNumber);
+                    return string.IsNullOrWhiteSpace(room)
+                        ? "Ghi nợ vào phòng"
+                        : $"Ghi nợ vào phòng P.{room}";
+                }
+
+                return PaymentMethod == "Chuyển khoản"
+                    ? "Thanh toán chuyển khoản"
+                    : "Thanh toán tiền mặt";
+            }
+        }
 
         // Commands
         public ICommand AddToCartCommand { get; }
@@ -151,6 +266,9 @@ namespace QuanLyDichVuKhachSan.ViewModels
         public ICommand IncreaseQtyCommand { get; }
         public ICommand DecreaseQtyCommand { get; }
         public ICommand RemoveFromCartCommand { get; }
+        public ICommand IncreaseCartItemCommand { get; }
+        public ICommand DecreaseCartItemCommand { get; }
+        public ICommand ToggleOrderNoteCommand { get; }
         public ICommand PlaceOrderCommand { get; }
         public ICommand PrintBillCommand { get; }
 
@@ -161,8 +279,17 @@ namespace QuanLyDichVuKhachSan.ViewModels
             IncreaseQtyCommand = new RelayCommand(p => { if (p is FoodItem food) food.SelectedQty++; });
             DecreaseQtyCommand = new RelayCommand(p => { if (p is FoodItem food && food.SelectedQty > 1) food.SelectedQty--; });
             RemoveFromCartCommand = new RelayCommand(RemoveFromCart);
+            IncreaseCartItemCommand = new RelayCommand(IncreaseCartItem);
+            DecreaseCartItemCommand = new RelayCommand(DecreaseCartItem);
+            ToggleOrderNoteCommand = new RelayCommand(_ => IsOrderNoteVisible = !IsOrderNoteVisible);
             PlaceOrderCommand = new RelayCommand(PlaceOrder);
             PrintBillCommand = new RelayCommand(PrintBill);
+
+            CurrentCartItems.CollectionChanged += (s, e) =>
+            {
+                RaiseCartSummaryChanged();
+                RefreshCartIndicators();
+            };
 
             ApplyFoodFilter();
 
@@ -175,7 +302,9 @@ namespace QuanLyDichVuKhachSan.ViewModels
                         AttachFoodItemListeners(food);
                     }
                 }
+
                 ApplyFoodFilter();
+                RefreshCartIndicators();
             };
 
             foreach (var food in Data.FoodItems)
@@ -188,8 +317,8 @@ namespace QuanLyDichVuKhachSan.ViewModels
         {
             food.PropertyChanged += (s, e) =>
             {
-                if (e.PropertyName == nameof(FoodItem.IsActive) || 
-                    e.PropertyName == nameof(FoodItem.Status) || 
+                if (e.PropertyName == nameof(FoodItem.IsActive) ||
+                    e.PropertyName == nameof(FoodItem.Status) ||
                     e.PropertyName == nameof(FoodItem.Name) ||
                     e.PropertyName == nameof(FoodItem.Price) ||
                     e.PropertyName == nameof(FoodItem.StockQuantity) ||
@@ -208,36 +337,70 @@ namespace QuanLyDichVuKhachSan.ViewModels
             // Lấy tất cả các món đang phục vụ
             var activeItems = Data.FoodItems.Where(x => x.IsActive).ToList();
 
+            AllFoodItemCount = activeItems.Count;
+            FoodOnlyItemCount = activeItems.Count(x => !x.IsDrink);
+            DrinkOnlyItemCount = activeItems.Count(x => x.IsDrink);
+
+            OnPropertyChanged(nameof(AllFoodItemCount));
+            OnPropertyChanged(nameof(FoodOnlyItemCount));
+            OnPropertyChanged(nameof(DrinkOnlyItemCount));
+            OnPropertyChanged(nameof(AllCategoryDisplay));
+            OnPropertyChanged(nameof(FoodCategoryDisplay));
+            OnPropertyChanged(nameof(DrinkCategoryDisplay));
+
             foreach (var item in activeItems)
             {
-                bool matched = !string.IsNullOrWhiteSpace(cleanQ) && TextSearchHelper.MatchPrepared(item.Name, cleanQ);
-                item.IsSearchMatched = matched;
+                item.IsSearchMatched = !string.IsNullOrWhiteSpace(cleanQ) &&
+                                       TextSearchHelper.MatchPrepared(item.Name, cleanQ);
             }
 
-            // 1. Phân loại ĐỒ ĂN: Nếu có tra cứu, món khớp được đẩy lên đầu
-            var foods = activeItems
-                .Where(x => !x.IsDrink)
-                .OrderByDescending(x => x.IsSearchMatched)
-                .ThenBy(x => x.Id)
+            IEnumerable<FoodItem> query = activeItems;
+
+            if (_selectedFoodCategory == "Đồ ăn")
+            {
+                query = query.Where(x => !x.IsDrink);
+            }
+            else if (_selectedFoodCategory == "Thức uống")
+            {
+                query = query.Where(x => x.IsDrink);
+            }
+
+            if (!string.IsNullOrWhiteSpace(cleanQ))
+            {
+                query = query.Where(x => x.IsSearchMatched);
+            }
+
+            var items = query
+                .OrderBy(x => x.Id)
                 .ToList();
 
-            // 2. Phân loại THỨC UỐNG: Nếu có tra cứu, thức uống khớp được đẩy lên đầu
-            var drinks = activeItems
-                .Where(x => x.IsDrink)
-                .OrderByDescending(x => x.IsSearchMatched)
-                .ThenBy(x => x.Id)
-                .ToList();
+            // Tách riêng 2 nhóm để hiển thị ngăn nắp theo hàng, có đường kẻ phân cách khi xem "Tất cả"
+            FilteredFoodOnlyItems.ReplaceRange(items.Where(x => !x.IsDrink));
+            FilteredDrinkOnlyItems.ReplaceRange(items.Where(x => x.IsDrink));
 
-            var allItems = new List<FoodItem>(foods.Count + drinks.Count);
-            allItems.AddRange(foods);
-            allItems.AddRange(drinks);
+            OnPropertyChanged(nameof(HasFoodResults));
+            OnPropertyChanged(nameof(HasDrinkResults));
+            OnPropertyChanged(nameof(HasFilteredItems));
+            OnPropertyChanged(nameof(FoodGroupCountText));
+            OnPropertyChanged(nameof(DrinkGroupCountText));
+        }
 
-            FilteredFoods.ReplaceRange(foods);
-            FilteredDrinks.ReplaceRange(drinks);
-            FilteredFoodItems.ReplaceRange(allItems);
+        private void RaiseCartSummaryChanged()
+        {
+            OnPropertyChanged(nameof(CartTotal));
+            OnPropertyChanged(nameof(CartLineCount));
+            OnPropertyChanged(nameof(CartDistinctCount));
+            OnPropertyChanged(nameof(CartSummaryText));
+            OnPropertyChanged(nameof(HasCartItems));
+        }
 
-            OnPropertyChanged(nameof(FoodCount));
-            OnPropertyChanged(nameof(DrinkCount));
+        private void RefreshCartIndicators()
+        {
+            var ids = CurrentCartItems.Select(x => x.FoodItemId).ToHashSet();
+            foreach (var food in Data.FoodItems)
+            {
+                food.IsInCart = ids.Contains(food.Id);
+            }
         }
 
         private void QuickAddSingle(object? parameter)
@@ -291,10 +454,65 @@ namespace QuanLyDichVuKhachSan.ViewModels
                     CostPrice = food.AverageCostPrice,
                     Quantity = qty
                 };
-                newItem.PropertyChanged += (s, e) => OnPropertyChanged(nameof(CartTotal));
+                newItem.PropertyChanged += (s, e) =>
+                {
+                    if (e.PropertyName == nameof(FoodOrderItem.Quantity))
+                    {
+                        RaiseCartSummaryChanged();
+                    }
+                };
                 CurrentCartItems.Add(newItem);
             }
-            OnPropertyChanged(nameof(CartTotal));
+
+            RaiseCartSummaryChanged();
+        }
+
+        private void IncreaseCartItem(object? parameter)
+        {
+            if (parameter is not FoodOrderItem item) return;
+
+            var food = Data.FoodItems.FirstOrDefault(x => x.Id == item.FoodItemId);
+            if (food != null && item.Quantity + 1 > food.StockQuantity)
+            {
+                MessageBox.Show($"Không thể tăng thêm. Tồn kho chỉ còn {food.StockQuantity} {food.RetailUnit}!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            item.Quantity++;
+        }
+
+        private void DecreaseCartItem(object? parameter)
+        {
+            if (parameter is FoodOrderItem item && item.Quantity > 1)
+            {
+                item.Quantity--;
+            }
+        }
+
+        /// <summary>
+        /// Áp dụng số lượng người dùng nhập trực tiếp vào giỏ hàng.
+        /// Tự chuẩn hóa về tối thiểu 1 và không vượt quá tồn kho hiện tại.
+        /// </summary>
+        public void CommitCartItemQuantity(FoodOrderItem item, int requestedQuantity)
+        {
+            if (item == null) return;
+
+            var food = Data.FoodItems.FirstOrDefault(x => x.Id == item.FoodItemId);
+            int maxStock = food?.StockQuantity ?? int.MaxValue;
+
+            if (requestedQuantity < 1)
+                requestedQuantity = 1;
+
+            if (requestedQuantity > maxStock)
+            {
+                requestedQuantity = Math.Max(1, maxStock);
+                MessageBox.Show(
+                    $"Số lượng vượt quá tồn kho. Đã điều chỉnh về {requestedQuantity} {item.RetailUnit}.",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            item.Quantity = requestedQuantity;
+            RaiseCartSummaryChanged();
         }
 
         private void RemoveFromCart(object? parameter)
@@ -302,7 +520,7 @@ namespace QuanLyDichVuKhachSan.ViewModels
             if (parameter is FoodOrderItem item)
             {
                 CurrentCartItems.Remove(item);
-                OnPropertyChanged(nameof(CartTotal));
+                RaiseCartSummaryChanged();
             }
         }
 
@@ -312,6 +530,27 @@ namespace QuanLyDichVuKhachSan.ViewModels
             {
                 MessageBox.Show("Vui lòng chọn ít nhất 1 mặt hàng vào giỏ hàng!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
+            }
+
+            // Kiểm tra lại số lượng trực tiếp trong giỏ trước khi tạo đơn.
+            foreach (var item in CurrentCartItems)
+            {
+                var stockFood = Data.FoodItems.FirstOrDefault(x => x.Id == item.FoodItemId);
+                if (stockFood == null || !stockFood.IsAvailable)
+                {
+                    MessageBox.Show(
+                        $"Mặt hàng [{item.FoodItemName}] hiện không còn sẵn sàng phục vụ. Vui lòng xóa khỏi giỏ.",
+                        "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (item.Quantity < 1 || item.Quantity > stockFood.StockQuantity)
+                {
+                    MessageBox.Show(
+                        $"Số lượng [{item.FoodItemName}] không hợp lệ. Tồn kho còn {stockFood.StockQuantity} {stockFood.RetailUnit}.",
+                        "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(OrderCustomerName) && OrderCustomerName.Any(char.IsDigit))
